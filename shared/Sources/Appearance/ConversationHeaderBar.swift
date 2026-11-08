@@ -1,8 +1,8 @@
 import SwiftUI
 
-/// Shared safe-area ownership keeps identity controls out of the timeline layout.
-/// iPhone uses the native soft bar. Mac reserves the same header space and styles
-/// its timeline edge explicitly; the system bar currently adds a hard blur seam.
+/// Shared header presentation keeps identity controls out of timeline rows.
+/// iPhone uses the native soft bar. Mac floats its identity above the scrolling
+/// timeline so the message layer can blur continuously beneath it.
 struct ConversationHeaderBar<Header: View>: ViewModifier {
     let header: Header
 
@@ -27,7 +27,7 @@ struct ConversationHeaderBar<Header: View>: ViewModifier {
     @ViewBuilder
     private func headerContent(_ content: Content) -> some View {
 #if os(macOS)
-        content.safeAreaInset(edge: .top, spacing: 0) { foregroundHeader }
+        content.overlay(alignment: .top) { foregroundHeader }
 #else
         if #available(iOS 26.0, *) {
             content.safeAreaBar(edge: .top, spacing: 0) { foregroundHeader }

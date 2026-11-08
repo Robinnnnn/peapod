@@ -24,7 +24,7 @@ struct MacConversationGlassSurface: ViewModifier {
 /// AppKit selection, marked text, focus and an in-flight paste as text wraps.
 struct MacComposerInputLayout: Layout {
     let controlSize: CGFloat
-    private let singleLineHeight: CGFloat = 40
+    private let singleLineHeight: CGFloat = 36
 
     private func fieldSize(width: CGFloat, subviews: Subviews) -> (CGSize, expanded: Bool) {
         let compactWidth = max(1, width - 2 * controlSize)

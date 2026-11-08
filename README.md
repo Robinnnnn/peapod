@@ -16,7 +16,7 @@ or automatic connection to the author's infrastructure.
 - Encrypted messages, photos, videos, files, and voice notes.
 - Replies, edits, unsend, reactions, pins, search, typing, and read receipts.
 - Native Share extensions, durable sending queues, and notification actions.
-- On-device iPhone notification-preview decryption, with generic fallback.
+- On-device iPhone and Mac notification-preview decryption source, with generic fallback.
 - Optional location sharing from one designated iPhone per person; Mac views
   the phone's shared location and never publishes its own.
 - Shared artwork and conversation behavior, with native Mac windowing,
@@ -34,7 +34,7 @@ locally. Your Firebase deployment stores and relays ciphertext.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/diagrams/message-flow-dark.svg">
-  <img src="docs/diagrams/message-flow-light.svg" alt="Person A and Person B each sync keys through their own iCloud Keychain. Messages are encrypted locally and relayed through your Firebase deployment. Cloud Functions sends iPhone alerts through FCM and APNs; Person B decrypts locally.">
+  <img src="docs/diagrams/message-flow-light.svg" alt="Person A and Person B each sync keys through their own iCloud Keychain. Messages are encrypted locally and relayed through your Firebase deployment. Cloud Functions sends alerts through FCM and APNs; Person B decrypts locally.">
 </picture>
 
 Secure pairing establishes the conversation key; each person's **own iCloud
@@ -42,9 +42,10 @@ Keychain** synchronizes their key capsule across their Apple devices. Firebase
 Auth and access rules restrict message and attachment access to the paired accounts.
 
 For alerting messages, Cloud Functions sends a push through **FCM → APNs** to
-the recipient's iPhone. Notification previews are decrypted on the iPhone when
-keys are available; otherwise the alert body stays generic. Backend operators can
-still see routing and delivery metadata.
+the recipient's Apple devices. The iPhone and Mac notification services attempt
+local preview decryption when keys are available; otherwise the alert body stays
+generic. Signed Mac APNs invocation still needs acceptance in each deployment.
+Backend operators can still see routing and delivery metadata.
 
 ## Requirements
 
@@ -91,12 +92,15 @@ properly signed apps and configured services.
 ## Run focused checks
 
 The retained checks cover cryptographic records and pairing, durable outbox
-behavior, backend policies, and database/storage authorization. Debug galleries,
+behavior, Mac photo staging/cropping, backend policies, and database/storage authorization. Debug galleries,
 click-through suites, private feedback automation, live-account fixtures, and
 release machinery are deliberately excluded.
 
 ```sh
 swift test --package-path packages/MinesE2EE
+xcodebuild -project Peapod.xcodeproj -scheme PeapodMac -configuration Debug \
+  -destination 'platform=macOS' -only-testing:PeapodMacTests \
+  CODE_SIGNING_ALLOWED=NO test
 cd backend/functions
 npm ci
 npm test
@@ -118,6 +122,7 @@ CLI-only advisories are documented in [backend/README.md](backend/README.md#depe
 | `apps/ios/NotificationServiceExtension` | On-device encrypted notification-preview handling |
 | `apps/macos/App` | Mac app composition, native presentation, platform services, and media |
 | `apps/macos/ShareExtension` | Mac Share extension metadata |
+| `apps/macos/NotificationServiceExtension` | Mac encrypted notification-preview extension metadata |
 | `shared/Sources` | Shared models, Firebase transports, authentication, pairing, encryption routing, appearance, and caching |
 | `shared/ShareExtension` | Shared cross-process Share queue and delivery implementation |
 | `shared/Resources` | App artwork and privacy manifest |

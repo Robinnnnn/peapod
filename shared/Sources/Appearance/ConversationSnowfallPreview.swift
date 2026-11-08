@@ -1,23 +1,15 @@
 import SwiftUI
 
-/// Soft-mix snowfall for the iPhone conversation.
+/// Soft-mix snowfall for both native conversations.
 struct ConversationSnowfallPreview: ViewModifier {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.scenePhase) private var scenePhase
     @State private var isVisible = false
 
-    private var enabled: Bool {
-#if os(iOS)
-        true
-#else
-        false
-#endif
-    }
-
     func body(content: Content) -> some View {
         content
             .overlay {
-                if enabled && isVisible && scenePhase == .active && !reduceMotion {
+                if isVisible && scenePhase == .active && !reduceMotion {
                     SoftMixSnowfall()
                         .ignoresSafeArea(.container)
                         .allowsHitTesting(false)

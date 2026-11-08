@@ -10,6 +10,7 @@ struct MacPartnerDetailsView: View {
     @State private var showingNicknameEditor = false
     @State private var editedNickname = ""
     @State private var showingPhotoImporter = false
+    @State private var pendingPhoto: MacPartnerPhotoSelection?
     @State private var showingMap = false
     @State private var showingPinnedMessages = false
     @State private var pendingPinnedMessageID: UUID?
@@ -98,7 +99,11 @@ struct MacPartnerDetailsView: View {
         .frame(width: 360)
         .background { GiftWrapWallpaper(composition: .tiled).overlay(.regularMaterial) }
         .fileImporter(isPresented: $showingPhotoImporter, allowedContentTypes: [.image]) { result in
-            guard let target = photoTarget, model.isCurrentAttachmentPreparation(target), model.partner.id == person.id else { return }
+            guard let target = photoTarget, model.isCurrentAttachmentPreparation(target), model.partner.id == person.id else {
+                photoTarget = nil
+                return
+            }
+            defer { photoTarget = nil }
             do {
                 let url = try result.get()
                 let access = url.startAccessingSecurityScopedResource()
@@ -107,11 +112,28 @@ struct MacPartnerDetailsView: View {
                     errorMessage = "Choose a photo up to 20 MiB."; return
                 }
                 let data = try Data(contentsOf: url, options: .mappedIfSafe)
-                try model.partnerPhotoStore.savePhoto(data: data, accountID: target.accountID, partnerID: person.id)
+                guard let image = MacPartnerPhotoCrop.decode(data: data) else {
+                    throw PartnerPhotoStore.PhotoError.invalidImage
+                }
+                pendingPhoto = MacPartnerPhotoSelection(image: image, target: target)
                 errorMessage = nil
             } catch CocoaError.userCancelled {
                 // Cancel leaves the current local photo untouched.
             } catch { errorMessage = "The photo couldn’t be saved. Choose another photo or try again." }
+        }
+        .sheet(item: $pendingPhoto) { selection in
+            MacPartnerPhotoCropView(image: selection.image, onCancel: {
+                pendingPhoto = nil
+            }, onSave: { data in
+                defer { pendingPhoto = nil }
+                guard model.isCurrentAttachmentPreparation(selection.target), model.partner.id == person.id else { return }
+                do {
+                    try model.partnerPhotoStore.savePhoto(data: data, accountID: selection.target.accountID, partnerID: person.id)
+                    errorMessage = nil
+                } catch {
+                    errorMessage = "The photo couldn’t be saved. Choose another photo or try again."
+                }
+            })
         }
         .sheet(isPresented: $showingMap) { MacMutualLocationMapView().environment(model) }
         .sheet(isPresented: $showingPinnedMessages, onDismiss: {
@@ -157,7 +179,7 @@ struct MacPartnerDetailsView: View {
             showingPinnedMessages = false
             showingSignOutConfirmation = false
             showingNicknameEditor = false
-            showingPhotoImporter = false; photoTarget = nil; showingMap = false; dismiss()
+            showingPhotoImporter = false; photoTarget = nil; pendingPhoto = nil; showingMap = false; dismiss()
         }
         .accessibilityIdentifier("partner-details")
     }

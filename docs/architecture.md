@@ -52,10 +52,12 @@ current profile assignment, conversation membership, protocol mode, and the
 native key capsule before accepting content. Its REST project ID comes from
 that extension's Firebase options.
 
-The iPhone notification service extension decrypts bounded preview sidecars
-locally. Missing keys or a deadline retain a generic notification. Mac sends
-compatible encrypted preview data but displays generic notification content.
-The notification extension has E2EE access but no shared-auth entitlement.
+The iPhone and Mac notification service extensions decrypt bounded preview
+sidecars locally from the active App Group route and an authenticated Keychain
+capsule. Missing keys, an account change, or a deadline retain a generic
+notification. Both extensions have E2EE access but no shared-auth entitlement.
+Signed Mac APNs invocation with the app open and closed remains an acceptance
+check for each deployment.
 
 ## Location
 

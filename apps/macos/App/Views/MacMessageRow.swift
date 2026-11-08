@@ -467,9 +467,13 @@ struct MacMessageRow: View {
             }
             .font(.caption2)
             .foregroundStyle(.secondary)
-            .padding(.horizontal, pinIsOverMedia ? 12 : 5)
-            .padding(.vertical, 1)
-            .background(incomingMessageBackground, in: .capsule)
+            .padding(.horizontal, showsTextMetadata ? (pinIsOverMedia ? 12 : 5) : 0)
+            .padding(.vertical, showsTextMetadata ? 1 : 0)
+            .background {
+                if showsTextMetadata {
+                    Capsule().fill(incomingMessageBackground)
+                }
+            }
             .fixedSize(horizontal: false, vertical: true)
         }
     }
@@ -477,10 +481,9 @@ struct MacMessageRow: View {
     @ViewBuilder
     private var floatingTimestamp: some View {
         if timestampEligible, !showsPersistentMetadata {
-            timestampLabel
+            timestampLabel(floating: true)
                 .padding(.horizontal, 5)
                 .padding(.vertical, 1)
-                .background(incomingMessageBackground, in: .capsule)
                 .offset(y: 15)
                 .opacity(timestampsRevealed ? 1 : 0)
                 .accessibilityHidden(!timestampsRevealed)
@@ -489,11 +492,23 @@ struct MacMessageRow: View {
     }
 
     private var timestampLabel: some View {
+        timestampLabel(floating: false)
+    }
+
+    private func timestampLabel(floating: Bool) -> some View {
         Text(MessageTimestampText.string(for: message.createdAt))
             .font(.caption2)
-            .foregroundStyle(.secondary)
+            .foregroundStyle(floating ? Color.white : Color.secondary)
             .monospacedDigit()
             .fixedSize(horizontal: true, vertical: false)
+            .shadow(
+                color: floating
+                    ? (colorScheme == .dark ? .black.opacity(0.28)
+                        : Color(.sRGB, red: 46/255, green: 31/255, blue: 18/255, opacity: 0.40))
+                    : .clear,
+                radius: 3,
+                y: 0.5
+            )
             .accessibilityLabel(
                 "Sent \(MessageTimestampText.accessibilityString(for: message.createdAt))"
             )
@@ -523,6 +538,10 @@ struct MacMessageRow: View {
 
     private var showsPersistentMetadata: Bool {
         showsEditedStatus || showsMessageDeliveryStatus
+    }
+
+    private var showsTextMetadata: Bool {
+        showsTimestamp || showsEditedStatus
     }
 
     private var reservesFloatingTimestampSpace: Bool {

@@ -54,19 +54,19 @@ struct EncryptedNotificationPreviewResolver: Sendable {
     let readCapsule: @Sendable (KeyScope) async throws -> StoredConversationCapsule?
 
     static let live = Self(currentTarget: {
-#if os(iOS)
-        guard let target = try SharedConversationStore.currentTarget(), target.mode == .encrypted,
-              let epoch = target.keyEpoch else { return nil }
-        return NotificationPreviewTarget(accountID: target.accountID, conversationID: target.conversationID,
-            keyEpoch: epoch, members: target.members, generation: target.generation)
-#else
-        // The shipping Mac has no service extension. Native tests inject synthetic routing.
-        return nil
-#endif
+        Self.target(from: try SharedConversationStore.currentTarget())
     }, readCapsule: { scope in
         let namespace = try BuildIdentity.keychainNamespace()
         return try await ConversationCapsuleStore(namespace: namespace).readCapsule(scope: scope)
     })
+
+    /// Both native notification services read the same active App Group route.
+    /// The authenticated capsule remains the authority for preview content.
+    static func target(from shared: SharedConversationTarget?) -> NotificationPreviewTarget? {
+        guard let shared, shared.mode == .encrypted, let epoch = shared.keyEpoch else { return nil }
+        return NotificationPreviewTarget(accountID: shared.accountID, conversationID: shared.conversationID,
+            keyEpoch: epoch, members: shared.members, generation: shared.generation)
+    }
 
     func resolve(_ request: EncryptedNotificationPreviewRequest) async -> ResolvedNotificationPreview? {
         do {

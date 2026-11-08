@@ -17,6 +17,10 @@ sidecars are encrypted before upload. Apple CryptoKit provides the primitives.
 Each person's trusted conversation capsule synchronizes through that person's
 iCloud Keychain. Missing keys block encrypted operations; they must not select
 a plaintext fallback or reset the conversation automatically.
+The iPhone and Mac notification service extensions use the active App Group
+route and E2EE Keychain group to attempt local preview decryption. They have no
+shared-auth Keychain entitlement and retain generic alert text when the route,
+key, or authenticated record cannot be verified.
 
 Backend and push operators still see account identifiers, membership, routing,
 message timing, record sizes, device/push tokens, and delivery metadata.

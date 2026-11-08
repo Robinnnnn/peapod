@@ -25,6 +25,19 @@ No hosted backend was deployed and no release was uploaded.
 
 Reproduce checks using the commands in README.md and backend/README.md.
 
+## Mac conversation sync verification
+
+The Mac Debug and Release schemes and the iPhone Simulator Debug scheme
+compiled with signing disabled. The built Mac app embeds
+`PeapodMacNotificationService.appex` with the expected extension point and
+example bundle ID. Its compiled resources include both snowfall flake assets
+and the conversation-edge Metal shader. Eight focused Mac tests passed with
+zero failures or skips, covering byte-preserving temporary photo import,
+cleanup and size/symlink rejection, staged-preview account isolation, and
+profile-photo crop geometry and rendering. These checks do not establish
+signed APNs invocation, app-open/app-closed preview behavior, or visual
+acceptance in a configured deployment.
+
 ## Public cleanup verification
 
 The follow-up cleanup on November 8, 2026 passed:

@@ -225,6 +225,7 @@ targets:
     platform: macOS
     sources:
     - path: shared/ShareExtension/EncryptedShareMessageWriter.swift
+    - path: apps/ios/App/Views/ConversationEdgeBlur.metal
     - path: apps/macos/App
       excludes:
       - Resources
@@ -246,6 +247,7 @@ targets:
       path: apps/macos/App/Resources/Info.plist
       properties:
         CFBundleDisplayName: Peapod
+        CFBundleName: Peapod
         CFBundleShortVersionString: "$(MARKETING_VERSION)"
         CFBundleVersion: "$(CURRENT_PROJECT_VERSION)"
         CFBundleURLTypes:
@@ -290,6 +292,8 @@ targets:
     - package: MinesE2EE
       product: MinesE2EE
     - target: PeapodMacShare
+      embed: true
+    - target: PeapodMacNotificationService
       embed: true
     - package: Firebase
       product: FirebaseAppCheck
@@ -363,6 +367,58 @@ targets:
       product: MinesE2EE
     - package: Firebase
       product: FirebaseAuth
+  PeapodMacNotificationService:
+    type: app-extension
+    platform: macOS
+    sources:
+    - path: apps/ios/NotificationServiceExtension/NotificationService.swift
+    - path: apps/ios/NotificationServiceExtension/EncryptedNotificationPreview.swift
+    - path: shared/Sources/AppGroup.swift
+    - path: shared/Sources/Services/Notifications/MessageNotificationPayload.swift
+    - path: shared/Sources/BuildIdentity.swift
+    info:
+      path: apps/macos/NotificationServiceExtension/Info.plist
+      properties:
+        CFBundleDisplayName: Peapod
+        CFBundleShortVersionString: "$(MARKETING_VERSION)"
+        CFBundleVersion: "$(CURRENT_PROJECT_VERSION)"
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.usernotifications.service
+          NSExtensionPrincipalClass: "$(PRODUCT_MODULE_NAME).NotificationService"
+        PeapodAppGroupIdentifier: "$(PEAPOD_APP_GROUP)"
+        PeapodAuthKeychainAccessGroup: "$(AppIdentifierPrefix)$(PEAPOD_AUTH_KEYCHAIN_SUFFIX)"
+        PeapodE2EEKeychainAccessGroup: "$(AppIdentifierPrefix)$(PEAPOD_E2EE_KEYCHAIN_SUFFIX)"
+        PeapodE2EEKeychainSuffix: ".$(PEAPOD_E2EE_KEYCHAIN_SUFFIX)"
+    entitlements:
+      path: apps/macos/NotificationServiceExtension/PeapodMacNotificationService.entitlements
+      properties:
+        com.apple.security.app-sandbox: true
+        com.apple.security.application-groups:
+        - "$(PEAPOD_APP_GROUP)"
+        keychain-access-groups:
+        - "$(AppIdentifierPrefix)$(PEAPOD_E2EE_KEYCHAIN_SUFFIX)"
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: "$(PEAPOD_BUNDLE_ID).mac-notification-service"
+        PRODUCT_NAME: PeapodMacNotificationService
+        INFOPLIST_KEY_CFBundleDisplayName: Peapod
+        APPLICATION_EXTENSION_API_ONLY: true
+        SKIP_INSTALL: true
+        ENABLE_HARDENED_RUNTIME: true
+    dependencies:
+    - package: MinesE2EE
+      product: MinesE2EE
+  PeapodMacTests:
+    type: bundle.unit-test
+    platform: macOS
+    sources:
+    - path: apps/macos/Tests/PeapodMacTests
+    dependencies:
+    - target: PeapodMac
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: "$(PEAPOD_BUNDLE_ID).mac.tests"
+        GENERATE_INFOPLIST_FILE: true
 schemes:
   Peapod:
     build:
@@ -375,6 +431,11 @@ schemes:
       targets:
         PeapodMac: all
         PeapodMacShare: all
+        PeapodMacNotificationService: all
+        PeapodMacTests: [test]
+    test:
+      targets:
+      - PeapodMacTests
 configFiles:
   Debug: Configurations/Peapod.xcconfig
   Release: Configurations/Peapod.xcconfig

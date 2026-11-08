@@ -1,11 +1,14 @@
 import AppKit
 import Foundation
+import PhotosUI
 import SwiftUI
 import UniformTypeIdentifiers
 
 struct MacConversationView: View {
     private static let bottomAnchorID = UUID()
-    private static let composerControlSize: CGFloat = 40
+    private static let composerControlSize: CGFloat = 32
+    private static let headerPhotoSize: CGFloat = 68
+    private static let headerOverlayHeight: CGFloat = headerPhotoSize + 45
 
     @Environment(MacAppModel.self) private var model
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -19,12 +22,18 @@ struct MacConversationView: View {
     @State private var photoPrefetchIsActive = false
     @State private var photoPrefetchVisibleIDs: [UUID] = []
     @State private var pickerPhotoTarget: SecureConversationResetTarget?
+    @State private var pickerRecentPhotoTarget: SecureConversationResetTarget?
     @State private var pickerFileTarget: SecureConversationResetTarget?
     @State private var showingPhotoImporter = false
+    @State private var showingRecentPhotoPicker = false
     @State private var showingFileImporter = false
+    @State private var selectedRecentPhotoItems: [PhotosPickerItem] = []
     @State private var stagedPhotos: [MacStagedPhotoDraft] = []
+    @State private var isPreviewingStagedPhoto = false
     @State private var stagedFiles: [MacStagedFileDraft] = []
     @State private var isPreparingPhotos = false
+    @State private var recentPhotoPreparation: AttachmentPreparationLease?
+    @State private var recentPhotoImportTask: Task<Void, Never>?
     @State private var editingMessage: ChatMessage?
     @State private var editingText = ""
     @State private var messageBeingUnsent: ChatMessage?
@@ -41,6 +50,8 @@ struct MacConversationView: View {
         NavigationStack {
             VStack(spacing: 0) {
                 messageTimeline
+                    .modifier(ConversationSnowfallPreview())
+                    .clipped()
 
                 composer
             }
@@ -107,6 +118,29 @@ struct MacConversationView: View {
             case let .failure(error):
                 guard let pickedTarget, model.isCurrentAttachmentPreparation(pickedTarget) else { return }
                 presentImporterError(error)
+            }
+        }
+        .photosPicker(
+            isPresented: $showingRecentPhotoPicker,
+            selection: $selectedRecentPhotoItems,
+            maxSelectionCount: max(1, remainingPhotoSlots),
+            selectionBehavior: .ordered,
+            matching: .images,
+            preferredItemEncoding: .current
+        )
+        .onChange(of: selectedRecentPhotoItems) {
+            guard !selectedRecentPhotoItems.isEmpty else { return }
+            let items = selectedRecentPhotoItems
+            selectedRecentPhotoItems = []
+            let target = pickerRecentPhotoTarget
+            pickerRecentPhotoTarget = nil
+            guard let target, model.isCurrentAttachmentPreparation(target),
+                  !isPreparingPhotos, remainingPhotoSlots > 0 else { return }
+            let lease = AttachmentPreparationLease { model.isCurrentAttachmentPreparation(target) }
+            recentPhotoPreparation = lease
+            isPreparingPhotos = true
+            recentPhotoImportTask = Task {
+                await prepareRecentPhotos(items, target: target, lease: lease)
             }
         }
         .fileImporter(
@@ -183,7 +217,12 @@ struct MacConversationView: View {
             searchText = ""
             pinnedVoiceSend = model.makeVoiceMessageSendOperation()
             pickerPhotoTarget = nil; pickerFileTarget = nil
+            pickerRecentPhotoTarget = nil
             showingPhotoImporter = false; showingFileImporter = false
+            showingRecentPhotoPicker = false
+            selectedRecentPhotoItems = []
+            recentPhotoPreparation?.invalidate(); recentPhotoImportTask?.cancel()
+            recentPhotoPreparation = nil; recentPhotoImportTask = nil; isPreparingPhotos = false
             discardStagedPhotos(); discardStagedFiles()
         }
         .onChange(of: conversationObscurations, initial: true) { _, obscurations in
@@ -204,13 +243,17 @@ struct MacConversationView: View {
             photoPrefetchIsActive = false
             photoPrefetcher.stop()
             voiceRecorder.suspend()
-            discardStagedPhotos()
-            discardStagedFiles()
-            model.conversationObscurationsDidChange([])
             model.conversationVisibilityDidChange(
                 isVisible: false,
                 isAppActive: scenePhase == .active
             )
+            model.conversationObscurationsDidChange([])
+            // A draft preview temporarily covers chat; opening it never consumes the draft.
+            guard !isPreviewingStagedPhoto || model.phase != .conversation else { return }
+            recentPhotoPreparation?.invalidate(); recentPhotoImportTask?.cancel()
+            recentPhotoPreparation = nil; recentPhotoImportTask = nil; isPreparingPhotos = false
+            discardStagedPhotos()
+            discardStagedFiles()
         }
     }
 
@@ -253,27 +296,30 @@ struct MacConversationView: View {
         return Button {
             showingPartnerDetails = true
         } label: {
-            VStack(spacing: 3) {
+            ZStack(alignment: .bottom) {
                 if let identity {
-                    ConversationPhotoOrnament(size: 48, warpsPhoto: photo != nil) {
-                        MacAvatar(person: identity, size: 48, image: photo)
+                    ConversationPhotoOrnament(size: Self.headerPhotoSize, warpsPhoto: photo != nil) {
+                        MacAvatar(person: identity, size: Self.headerPhotoSize, image: photo)
                     }
                         .accessibilityIdentifier("partner-header-photo")
                     Text(displayName ?? identity.displayName)
-                        .font(.caption.weight(.semibold))
+                        .font(.subheadline.weight(.semibold))
                         .lineLimit(1)
                         .truncationMode(.tail)
+                        .frame(maxWidth: 220)
+                        .fixedSize(horizontal: true, vertical: false)
                         .padding(.horizontal, 10)
                         .padding(.vertical, 4)
                         .modifier(MacConversationGlassSurface(reduceTransparency: reduceTransparency,
                                                               cornerRadius: 20))
+                        .offset(y: 15)
                         .accessibilityIdentifier("partner-header-name")
                 } else {
-                    ConversationPhotoOrnament(size: 48, warpsPhoto: false) {
+                    ConversationPhotoOrnament(size: Self.headerPhotoSize, warpsPhoto: false) {
                         Image(systemName: "person.fill")
-                            .font(.system(size: 19))
+                            .font(.system(size: 26))
                             .foregroundStyle(.white)
-                            .frame(width: 48, height: 48)
+                            .frame(width: Self.headerPhotoSize, height: Self.headerPhotoSize)
                             .background(GiftWrapAppearance.pine, in: Circle())
                     }
                         .accessibilityIdentifier("partner-header-photo")
@@ -281,8 +327,10 @@ struct MacConversationView: View {
                         .controlSize(.small)
                         .accessibilityLabel("Loading profile")
                         .accessibilityIdentifier("partner-identity-loading")
+                        .offset(y: 15)
                 }
             }
+            .padding(.bottom, 15)
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
@@ -290,7 +338,7 @@ struct MacConversationView: View {
         .help(displayName.map { "View \($0)’s details" } ?? "Loading profile")
         .accessibilityLabel(displayName.map { "View \($0)’s details" } ?? "Loading profile")
         .accessibilityIdentifier("partner-details-button")
-        .padding(.top, 22)
+        .padding(.top, 20)
         .padding(.bottom, 10)
         .frame(maxWidth: .infinity)
     }
@@ -471,6 +519,7 @@ struct MacConversationView: View {
                             )
                             }
                             .id(item.id)
+                            .modifier(MacConversationTimelineEdge())
                         }
 
                         if model.isPartnerTyping, searchText.isEmpty {
@@ -496,7 +545,8 @@ struct MacConversationView: View {
                 .padding(.vertical, 14)
                 .frame(maxWidth: .infinity)
         }
-            .modifier(MacConversationTimelineEdge())
+            .contentMargins(.top, Self.headerOverlayHeight, for: .scrollContent)
+            .coordinateSpace(name: "conversationTimelineViewport")
             .scrollPosition($adapter.rendererPosition)
             .onScrollTargetVisibilityChange(idType: UUID.self, threshold: 0.01) { ids in
                 scrollAdapter.visibleRowsDidChange(ids)
@@ -569,6 +619,7 @@ struct MacConversationView: View {
             if !stagedPhotos.isEmpty || isPreparingPhotos {
                 MacStagedPhotoTray(
                     photos: stagedPhotos,
+                    previewChanged: { isPreviewingStagedPhoto = $0 },
                     isPreparing: isPreparingPhotos,
                     remove: removeStagedPhoto
                 )
@@ -696,7 +747,15 @@ struct MacConversationView: View {
 
         return MacComposerInputLayout(controlSize: Self.composerControlSize) {
             Menu {
-                Button("Photos and videos", systemImage: "photo.on.rectangle.angled") {
+                Button("Choose from Photos…", systemImage: "photo.on.rectangle.angled") {
+                    guard let target = model.attachmentPreparationTarget,
+                          model.isCurrentAttachmentPreparation(target) else { return }
+                    pickerRecentPhotoTarget = target
+                    showingRecentPhotoPicker = true
+                }
+                .disabled(remainingPhotoSlots == 0 || isPreparingPhotos)
+
+                Button("Browse photos and videos…", systemImage: "folder") {
                     pickerPhotoTarget = model.attachmentPreparationTarget
                     showingPhotoImporter = true
                 }
@@ -725,9 +784,8 @@ struct MacConversationView: View {
                 .lineLimit(1...7)
                 .focused($composerIsFocused)
                 .tint(Color.primary)
-                .padding(.horizontal, 12)
-                .padding(.top, 5)
-                .padding(.bottom, 11)
+                .padding(.horizontal, 8)
+                .padding(.vertical, 4)
                 .accessibilityLabel("Message")
                 .onSubmit {
                     if voicePanelIsActive { sendVoiceMessage() }
@@ -752,7 +810,7 @@ struct MacConversationView: View {
 
             composerTrailingControl
         }
-        .padding(8)
+        .padding(6)
     }
 
     private var voicePanelIsActive: Bool {
@@ -973,7 +1031,6 @@ struct MacConversationView: View {
 
     @MainActor
     private func handleDroppedFiles(_ urls: [URL], target: SecureConversationResetTarget) async {
-
         guard model.isCurrentAttachmentPreparation(target) else { return }
         let photoURLs = urls.filter(isPhotoFile)
         let otherURLs = urls.filter { !isPhotoFile($0) }
@@ -1038,7 +1095,6 @@ struct MacConversationView: View {
     private func preparePhotoFiles(_ urls: [URL], capturedTarget: SecureConversationResetTarget? = nil) async {
         guard let target = capturedTarget ?? model.attachmentPreparationTarget,
               model.isCurrentAttachmentPreparation(target) else { return }
-
         guard !isPreparingPhotos else { return }
         isPreparingPhotos = true
         defer { isPreparingPhotos = false }
@@ -1069,8 +1125,56 @@ struct MacConversationView: View {
         }
     }
 
-    private func stagedPhoto(from url: URL, target: SecureConversationResetTarget) async throws -> MacStagedPhotoDraft {
+    @MainActor
+    private func prepareRecentPhotos(_ items: [PhotosPickerItem], target: SecureConversationResetTarget,
+                                     lease: AttachmentPreparationLease) async {
+        defer {
+            if recentPhotoPreparation === lease {
+                recentPhotoPreparation = nil
+                recentPhotoImportTask = nil
+                isPreparingPhotos = false
+            }
+        }
+        var failureMessage: String?
+        for item in items.prefix(remainingPhotoSlots) {
+            do {
+                guard let transfer = try await lease.load({
+                    try await item.loadTransferable(type: MacImportedPhotoTransfer.self)
+                }) else {
+                    failureMessage = "One of the photos couldn’t be prepared."
+                    continue
+                }
+                let photo = try transfer.result.get()
+                defer { photo.cleanUp() }
+                guard let thumbnail = try await lease.load({
+                    await MacAttachmentImageCache.decodeFile(photo.url, maximumPixelSize: 960)
+                }) else {
+                    failureMessage = "One of the photos couldn’t be prepared."
+                    continue
+                }
+                let share = try lease.stage({
+                    try model.stageAttachmentFile(from: photo.url, kind: .image,
+                        suggestedName: photo.originalFileName,
+                        contentTypeIdentifier: photo.contentTypeIdentifier)
+                }, accepts: { share in
+                    share.conversationOwnerID?.utf8.elementsEqual(target.accountID.utf8) == true
+                        && share.targetConversationID?.utf8.elementsEqual(target.conversationID.utf8) == true
+                }, discard: { model.discardAttachmentDrafts(for: [$0]) })
+                // The lease and target remain current through admission; there is no suspension before append.
+                withAnimation(photoDraftAnimation) {
+                    stagedPhotos.append(MacStagedPhotoDraft(share: share, thumbnail: thumbnail))
+                }
+            } catch {
+                guard lease.isCurrent, !Task.isCancelled, recentPhotoPreparation === lease else { return }
+                failureMessage = error.localizedDescription
+            }
+        }
+        if lease.isCurrent, !Task.isCancelled, recentPhotoPreparation === lease, let failureMessage {
+            model.errorMessage = failureMessage
+        }
+    }
 
+    private func stagedPhoto(from url: URL, target: SecureConversationResetTarget) async throws -> MacStagedPhotoDraft {
         let isAccessingSecurityScopedResource =
             url.startAccessingSecurityScopedResource()
         defer {
@@ -1141,7 +1245,6 @@ struct MacConversationView: View {
     }
 
     private func prepareFiles(_ urls: [URL]) {
-
         let availableSlots = remainingPhotoSlots
         var failureMessage: String?
         for url in urls.prefix(availableSlots) {
@@ -1326,6 +1429,83 @@ private struct MacStagedPhotoDraft: Identifiable {
     }
 }
 
+/// Resolve only a currently staged image for the active account and conversation.
+@MainActor
+enum MacStagedPhotoPreviewSource {
+    static func url(for share: PendingShare, target: SecureConversationResetTarget?,
+                    resolve: (PendingShare) throws -> URL) throws -> URL {
+        guard let target, share.kind == .image,
+              share.conversationOwnerID?.utf8.elementsEqual(target.accountID.utf8) == true,
+              share.targetConversationID?.utf8.elementsEqual(target.conversationID.utf8) == true else {
+            throw PendingShareStoreError.accountMismatch
+        }
+        return try resolve(share)
+    }
+}
+
+private struct MacStagedPhotoPreview: View {
+    @Environment(MacAppModel.self) private var model
+    let photo: MacStagedPhotoDraft
+    let dismiss: () -> Void
+    @State private var viewingImage: NSImage?
+    @State private var detailImage: NSImage?
+    @State private var isZoomed = false
+
+    var body: some View {
+        VStack(spacing: 0) {
+            MacPhotoCanvas(image: detailImage ?? viewingImage ?? photo.thumbnail) {
+                isZoomed = true
+            }
+            .accessibilityLabel(photo.share.originalFileName ?? "Photo")
+
+            Divider()
+
+            HStack {
+                Text(photo.share.originalFileName ?? "Photo")
+                    .font(.callout)
+                    .lineLimit(1)
+                Spacer()
+                Button("Done", action: dismiss)
+                    .keyboardShortcut(.defaultAction)
+            }
+            .padding(14)
+        }
+        .frame(minWidth: 640, minHeight: 520)
+        .modifier(MacConversationPreviewReadObscuration())
+        .task {
+            let target = model.attachmentPreparationTarget
+            guard let target, model.isCurrentAttachmentPreparation(target) else { dismiss(); return }
+            do {
+                let url = try MacStagedPhotoPreviewSource.url(for: photo.share, target: target,
+                                                               resolve: model.stagedAttachmentURL)
+                let image = await MacAttachmentImageCache.decodeFile(url, maximumPixelSize: 4096)
+                guard !Task.isCancelled else { return }
+                guard model.isCurrentAttachmentPreparation(target) else { dismiss(); return }
+                viewingImage = image
+            } catch PendingShareStoreError.accountMismatch {
+                dismiss()
+            } catch {
+                // The admitted thumbnail remains useful if the local original is unavailable.
+            }
+        }
+        .task(id: isZoomed) {
+            guard isZoomed, detailImage == nil, let target = model.attachmentPreparationTarget else { return }
+            do {
+                let url = try MacStagedPhotoPreviewSource.url(for: photo.share, target: target,
+                                                               resolve: model.stagedAttachmentURL)
+                let image = await MacAttachmentImageCache.decodeFile(url, maximumPixelSize: 8192)
+                guard !Task.isCancelled else { return }
+                guard model.isCurrentAttachmentPreparation(target) else { dismiss(); return }
+                detailImage = image
+            } catch {
+                // Keep the fitted preview if the original is no longer available.
+            }
+        }
+        .onChange(of: model.attachmentPreparationTarget) { dismiss() }
+        .onDisappear { viewingImage = nil; detailImage = nil }
+    }
+}
+
 private struct MacStagedFileDraft: Identifiable {
     let share: PendingShare
 
@@ -1376,7 +1556,9 @@ private struct MacStagedFileTray: View {
 }
 
 private struct MacStagedPhotoTray: View {
+    @State private var previewPhoto: MacStagedPhotoDraft?
     let photos: [MacStagedPhotoDraft]
+    let previewChanged: (Bool) -> Void
     let isPreparing: Bool
     let remove: (UUID) -> Void
 
@@ -1388,12 +1570,19 @@ private struct MacStagedPhotoTray: View {
                     id: \.element.id
                 ) { index, photo in
                     ZStack(alignment: .topTrailing) {
-                        Image(nsImage: photo.thumbnail)
-                            .resizable()
-                            .scaledToFill()
-                            .frame(width: 76, height: 76)
-                            .clipShape(.rect(cornerRadius: 14))
-                            .accessibilityHidden(true)
+                        Button {
+                            previewChanged(true)
+                            previewPhoto = photo
+                        } label: {
+                            Image(nsImage: photo.thumbnail)
+                                .resizable()
+                                .scaledToFill()
+                                .frame(width: 76, height: 76)
+                                .clipShape(.rect(cornerRadius: 14))
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel("Preview photo \(index + 1)")
+                        .accessibilityHint("Opens a larger photo. Pinch to zoom.")
 
                         Button {
                             remove(photo.id)
@@ -1440,6 +1629,14 @@ private struct MacStagedPhotoTray: View {
         .padding(.bottom, 4)
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("staged-photo-tray")
+        .sheet(item: $previewPhoto, onDismiss: { previewChanged(false) }) { photo in
+            MacStagedPhotoPreview(photo: photo) { previewPhoto = nil }
+        }
+        .onChange(of: photos.map(\.id)) {
+            if let previewPhoto, !photos.contains(where: { $0.id == previewPhoto.id }) {
+                self.previewPhoto = nil
+            }
+        }
     }
 }
 
@@ -1683,36 +1880,26 @@ private struct MacVoiceComposer: View {
     }
 }
 
-/// A drawing-only viewport fade. It never changes layout, offsets or scroll intent.
-/// Suppress the native Mac bar backdrop so its hard blur seam cannot cover the fade.
+/// Blur scrolling content beneath the floating identity without dimming it.
 private struct MacConversationTimelineEdge: ViewModifier {
-    @State private var isScrolledFromTop = true
-    @ScaledMetric(relativeTo: .body) private var fadeHeight: CGFloat = 36
+    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
+    @Environment(\.displayScale) private var displayScale
 
     func body(content: Content) -> some View {
-        hideNativeEdge(content)
-            .mask {
-                VStack(spacing: 0) {
-                    LinearGradient(colors: [isScrolledFromTop ? .clear : .black, .black],
-                                   startPoint: .top, endPoint: .bottom)
-                        .frame(height: fadeHeight)
-                    Rectangle().fill(.black)
-                }
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-            }
-            .onScrollGeometryChange(for: Bool.self) { geometry in
-                geometry.contentOffset.y + geometry.contentInsets.top > 1
-            } action: { _, scrolled in
-                isScrolledFromTop = scrolled
-            }
+        content.visualEffect { row, geometry in
+            let rowTop = Float(geometry.frame(in: .named("conversationTimelineViewport")).minY)
+            return row
+                .layerEffect(shader(rowTop: rowTop, axis: CGSize(width: 1, height: 0)),
+                    maxSampleOffset: CGSize(width: 12, height: 0), isEnabled: !reduceTransparency)
+                .layerEffect(shader(rowTop: rowTop, axis: CGSize(width: 0, height: 1)),
+                    maxSampleOffset: CGSize(width: 0, height: 12), isEnabled: !reduceTransparency)
+        }
     }
 
-    @ViewBuilder
-    private func hideNativeEdge(_ content: Content) -> some View {
-        if #available(macOS 26.0, *) {
-            content.scrollEdgeEffectHidden(true, for: .top)
-        } else {
-            content
-        }
+    private func shader(rowTop: Float, axis: CGSize) -> Shader {
+        ShaderLibrary.conversationEdgeBlur(
+            .float(rowTop), .float4(0, 148, 0, 0), .float2(4, 0),
+            .float2(axis), .float(12), .float(Float(1 / max(displayScale, 1)))
+        )
     }
 }

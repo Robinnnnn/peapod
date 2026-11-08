@@ -27,6 +27,7 @@ Register these bundle identifiers with your Apple team:
 | PeapodShare | base + `.share` |
 | PeapodMacShare | base + `.mac-share` |
 | PeapodNotificationService | base + `.notification-service` |
+| PeapodMacNotificationService | base + `.mac-notification-service` |
 
 Enable the matching capabilities in your developer account and provisioning:
 Sign in with Apple, Push Notifications, the shared App Group, and the relevant
@@ -34,9 +35,11 @@ communication/time-sensitive notification and App Attest capabilities declared
 in `project.yml`. The Mac apps use sandboxing and their declared file/network/
 audio entitlements. Both people need iCloud Keychain enabled for key sync.
 
-The main apps and Share extensions share the auth Keychain group. All five
-targets share the E2EE group. The notification extension intentionally does
-**not** receive the auth Keychain entitlement. Keep those boundaries intact.
+The main apps and Share extensions share the auth Keychain group. All six
+targets share the E2EE group. Neither notification extension receives the auth
+Keychain entitlement. Assign the Mac notification extension to the same App
+Group as the Mac app before creating its distribution provisioning profile.
+Keep those boundaries intact.
 Xcode expands `AppIdentifierPrefix` from provisioning into both entitlements
 and Info.plist configuration; Swift validates those expanded identities.
 Do not substitute an assumed team ID for an App ID prefix or add a fallback

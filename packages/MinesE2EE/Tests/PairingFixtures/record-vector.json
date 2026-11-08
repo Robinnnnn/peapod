@@ -1,0 +1,30 @@
+{
+  "description": "Non-production deterministic Phase-0 record vector",
+  "suite": "mines-e2ee-v1",
+  "encoding": {
+    "lengthPrefix": "uint32 big-endian",
+    "keyEpoch": "uint32 big-endian",
+    "revision": "uint64 big-endian",
+    "strings": "UTF-8"
+  },
+  "inputs": {
+    "conversationId": "conversation-fixture-001",
+    "recordId": "message-fixture-001",
+    "senderId": "user-alice",
+    "recordKind": "message",
+    "keyEpoch": 7,
+    "revision": 1,
+    "epochKeyHex": "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
+    "nonceHex": "000102030405060708090a0b",
+    "plaintextUTF8": "{\"text\":\"hello\"}"
+  },
+  "expected": {
+    "saltHex": "7ac077945f4573712d69edf330a26db7272f49086fbd5aeec38649c5d7efeb72",
+    "recordContextHex": "6d696e65732f653265652f76312f7265636f726400000018636f6e766572736174696f6e2d666978747572652d303031000000136d6573736167652d666978747572652d3030310000000a757365722d616c69636500000007000000076d6573736167650000000000000001",
+    "derivedKeyHex": "d448ae68e3bd9c622d17b78216cffe4b809fb3e413b460e8b4a5a8387c85288a",
+    "authenticatedDataHex": "6d696e65732f653265652f76312f6161646d696e65732f653265652f76312f7265636f726400000018636f6e766572736174696f6e2d666978747572652d303031000000136d6573736167652d666978747572652d3030310000000a757365722d616c69636500000007000000076d6573736167650000000000000001",
+    "ciphertextHex": "324f63c2d11cb34743ffc72661e26d58",
+    "tagHex": "f64e8c6fe947b75f580e212569d07c1e",
+    "combinedNonceCiphertextTagHex": "000102030405060708090a0b324f63c2d11cb34743ffc72661e26d58f64e8c6fe947b75f580e212569d07c1e"
+  }
+}

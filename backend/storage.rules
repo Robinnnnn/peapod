@@ -1,0 +1,88 @@
+rules_version = '2';
+
+service firebase.storage {
+  match /b/{bucket}/o {
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function isConversationMember(conversationId) {
+      return signedIn()
+        && firestore.get(
+          /databases/(default)/documents/conversations/$(conversationId)
+        ).data.get("status", "active") == "active"
+        && request.auth.uid in firestore.get(
+            /databases/(default)/documents/conversations/$(conversationId)
+          ).data.members;
+    }
+
+    function isLegacyConversationMember(conversationId) {
+      return isConversationMember(conversationId)
+        && firestore.get(/databases/(default)/documents/conversations/$(conversationId)).data.get("encryption", null) == null;
+    }
+
+    function isEncryptedConversationMember(conversationId) {
+      return isConversationMember(conversationId)
+        && firestore.get(/databases/(default)/documents/conversations/$(conversationId)).data.get("encryption", "") == "mines-e2ee-v1";
+    }
+
+    function encryptedBlob(conversationId, blobId) {
+      return firestore.get(/databases/(default)/documents/conversations/$(conversationId)/encryptedBlobs/$(blobId));
+    }
+
+    function attachment(conversationId, attachmentId) {
+      return firestore.get(
+        /databases/(default)/documents/conversations/$(conversationId)/attachments/$(attachmentId)
+      );
+    }
+
+    match /conversations/{conversationId}/attachments/{attachmentId}/{fileName} {
+      allow read: if isConversationMember(conversationId);
+      allow create: if isLegacyConversationMember(conversationId)
+        && attachment(conversationId, attachmentId).data.ownerId
+          == request.auth.uid
+        && attachment(conversationId, attachmentId).data.fileName == fileName
+        && attachment(conversationId, attachmentId).data.byteSize
+          == request.resource.size
+        && attachment(conversationId, attachmentId).data.contentType
+          == request.resource.contentType
+        && request.resource.size > 0
+        && (request.resource.size <= 100 * 1024 * 1024
+          || (request.resource.contentType.matches("^(image|video)/.*")
+            && request.resource.size <= 200 * 1024 * 1024))
+        && request.resource.contentType != null
+        && request.resource.contentType.size() <= 255;
+      allow update: if false;
+      allow delete: if isLegacyConversationMember(conversationId)
+        && attachment(conversationId, attachmentId).data.ownerId
+          == request.auth.uid;
+    }
+
+    match /conversations/{conversationId}/encryptedBlobs/{blobId}/blob {
+      allow read: if isEncryptedConversationMember(conversationId);
+      allow create: if resource == null
+        && isEncryptedConversationMember(conversationId)
+        && encryptedBlob(conversationId, blobId).data.ownerId == request.auth.uid
+        && encryptedBlob(conversationId, blobId).data.byteSize == request.resource.size
+        && request.resource.size > 0
+        && request.resource.size <= 200 * 1024 * 1024 + 4096
+        && request.resource.contentType == "application/octet-stream"
+        // Production Storage supplies these defaults even when the SDK omits
+        // them. The fixed opaque leaf is safe; source filenames remain denied.
+        && request.resource.get("contentDisposition", null)
+          in [null, "inline; filename*=utf-8''blob"]
+        && request.resource.get("contentEncoding", null) in [null, "identity"]
+        // The Apple SDK serializes absent custom metadata as JSON null.
+        // Both forms contain no custom fields; nonempty maps stay forbidden.
+        && (request.resource.get("metadata", null) == null
+          || request.resource.metadata.keys().hasOnly([]));
+      allow update: if false;
+      allow delete: if isEncryptedConversationMember(conversationId)
+        && encryptedBlob(conversationId, blobId).data.ownerId == request.auth.uid;
+    }
+
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+  }
+}

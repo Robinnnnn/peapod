@@ -1,0 +1,16 @@
+[extend]
+useDefault = true
+
+[[allowlists]]
+description = "Typed private-key property declaration contains no credential value"
+condition = "AND"
+paths = ['''packages/MinesE2EE/Sources/MinesE2EE/PairingProtocol\.swift$''']
+regexTarget = "line"
+regexes = ['''^\s*fileprivate let privateKey: Curve25519\.KeyAgreement\.PrivateKey\s*$''']
+
+[[allowlists]]
+description = "Reviewed deterministic synthetic known-answer keys, never production material"
+condition = "AND"
+paths = ['''packages/MinesE2EE/Tests/PairingFixtures/(pairing-offer-vector|record-vector)\.json$''']
+regexTarget = "line"
+regexes = ['''"derivedKeyHex": "(2c6cf3607f5fe6e71a3a82498314990fa49322ac6e70111667730922298e5ae9|d448ae68e3bd9c622d17b78216cffe4b809fb3e413b460e8b4a5a8387c85288a)"''']

@@ -1,0 +1,790 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function isSelf(uid) {
+      return signedIn() && request.auth.uid == uid;
+    }
+
+    function conversation(conversationId) {
+      return get(/databases/$(database)/documents/conversations/$(conversationId));
+    }
+
+    function isConversationMember(conversationId) {
+      return signedIn()
+        && conversation(conversationId).data.get("status", "active")
+          == "active"
+        && conversation(conversationId).data.members is list
+        && request.auth.uid in conversation(conversationId).data.members;
+    }
+
+    function isUUID(value) {
+      return value is string
+        && value.matches(
+          '^[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}$'
+        );
+    }
+
+    function isLegacyConversationMember(conversationId) {
+      return isConversationMember(conversationId)
+        && conversation(conversationId).data.get("encryption", null) == null;
+    }
+
+    function isEncryptedConversationMember(conversationId) {
+      return isConversationMember(conversationId)
+        && conversation(conversationId).data.get("encryption", "") == "mines-e2ee-v1";
+    }
+
+    function validEncryptedRecord(conversationId, maximumBytes) {
+      return isEncryptedConversationMember(conversationId)
+        && request.resource.data.encryption == "mines-e2ee-v1"
+        && request.resource.data.keyEpoch == conversation(conversationId).data.keyEpoch
+        && request.resource.data.revision is int
+        && request.resource.data.revision > 0
+        && request.resource.data.revision <= 9007199254740991
+        && request.resource.data.ciphertext is bytes
+        && request.resource.data.ciphertext.size() > 0
+        && request.resource.data.ciphertext.size() <= maximumBytes;
+    }
+
+    function validLocationSource(data) {
+      return data.sourceDeviceId is string
+        && data.sourceDeviceId.size() >= 16 && data.sourceDeviceId.size() <= 128
+        && data.sourceDeviceId.matches('^[A-Za-z0-9_-]+$')
+        && data.sourceGeneration is int && data.sourceGeneration > 0
+        && data.sourceGeneration <= 9007199254740991;
+    }
+
+    function sameLocationSource(left, right) {
+      return left.sourceDeviceId == right.sourceDeviceId
+        && left.sourceGeneration == right.sourceGeneration;
+    }
+
+    function isCanonicalUUID(value) {
+      return value is string && value.matches(
+        '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
+      );
+    }
+
+    function attachment(conversationId, messageId) {
+      return get(
+        /databases/$(database)/documents/conversations/$(conversationId)/attachments/$(messageId)
+      );
+    }
+
+    function hasOwnedAttachment(conversationId, messageId) {
+      return exists(
+          /databases/$(database)/documents/conversations/$(conversationId)/attachments/$(messageId)
+        )
+        && attachment(conversationId, messageId).data.messageId == messageId
+        && attachment(conversationId, messageId).data.ownerId
+          == request.auth.uid;
+    }
+
+    function messageIsAbsentOrOwned(conversationId, messageId) {
+      return !exists(
+          /databases/$(database)/documents/conversations/$(conversationId)/messages/$(messageId)
+        )
+        || (
+          get(
+            /databases/$(database)/documents/conversations/$(conversationId)/messages/$(messageId)
+          ).data.senderId == request.auth.uid
+          && get(
+            /databases/$(database)/documents/conversations/$(conversationId)/messages/$(messageId)
+          ).data.get("deletedAt", null) == null
+        );
+    }
+
+    function validUserCreate(uid) {
+      return isSelf(uid)
+        && request.resource.data.keys().hasOnly([
+          "displayName",
+          "photoURL",
+          "createdAt"
+        ])
+        && request.resource.data.displayName is string
+        && request.resource.data.displayName.size() <= 80
+        && request.resource.data.get("photoURL", "") is string
+        && request.resource.data.createdAt == request.time;
+    }
+
+    function validUserUpdate(uid) {
+      return isSelf(uid)
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          "displayName",
+          "photoURL",
+          "updatedAt"
+        ])
+        && request.resource.data.displayName is string
+        && request.resource.data.displayName.size() <= 80
+        && request.resource.data.get("photoURL", "") is string
+        && request.resource.data.updatedAt == request.time;
+    }
+
+    match /users/{uid} {
+      allow get: if isSelf(uid)
+        || (
+          signedIn()
+          && resource.data.get("activeConversationId", "") is string
+          && resource.data.get("activeConversationId", "").size() > 0
+          && conversation(
+            resource.data.activeConversationId
+          ).data.get("status", "active") == "active"
+          && request.auth.uid in conversation(
+            resource.data.activeConversationId
+          ).data.members
+          && uid in conversation(
+            resource.data.activeConversationId
+          ).data.members
+        );
+      allow list: if false;
+      allow create: if validUserCreate(uid);
+      allow update: if validUserUpdate(uid);
+      allow delete: if false;
+
+      match /devices/{deviceId} {
+        allow read: if isSelf(uid);
+        allow create: if isSelf(uid)
+          && request.resource.data.keys().hasOnly([
+            "token",
+            "platform",
+            "createdAt",
+            "updatedAt"
+          ])
+          && request.resource.data.token is string
+          && request.resource.data.token.size() >= 32
+          && request.resource.data.token.size() <= 4096
+          && request.resource.data.platform in ["ios", "macos"]
+          && request.resource.data.updatedAt == request.time
+          && request.resource.data.createdAt == request.time;
+        allow update: if isSelf(uid)
+          && request.resource.data.keys().hasOnly([
+            "token",
+            "platform",
+            "createdAt",
+            "updatedAt"
+          ])
+          && request.resource.data.token is string
+          && request.resource.data.token.size() >= 32
+          && request.resource.data.token.size() <= 4096
+          && request.resource.data.platform in ["ios", "macos"]
+          && request.resource.data.createdAt == resource.data.createdAt
+          && request.resource.data.updatedAt == request.time;
+        allow delete: if isSelf(uid);
+      }
+    }
+
+    // Pairing codes contain privileged membership state. Only Admin SDK Cloud
+    // Functions may create, inspect, consume, or delete them.
+    match /pairingCodes/{code} {
+      allow read, write: if false;
+    }
+
+    // Throttle state is also server-managed and must not be inspectable or
+    // mutable by an authenticated client.
+    match /pairingRateLimits/{uid} {
+      allow read, write: if false;
+
+      match /pairingAttempts/{attemptId} {
+        allow read, write: if false;
+      }
+    }
+
+    match /conversations/{conversationId} {
+      allow get, list: if signedIn()
+        && resource.data.get("status", "active") == "active"
+        && resource.data.members is list
+        && request.auth.uid in resource.data.members;
+      allow create, update, delete: if false;
+
+      // Shared routing metadata: no copied message content or encrypted payload fields.
+      match /pins/{messageId} {
+        function target() {
+          return getAfter(/databases/$(database)/documents/conversations/$(conversationId)/messages/$(messageId));
+        }
+        allow read: if isConversationMember(conversationId);
+        allow create: if isConversationMember(conversationId)
+          && isUUID(messageId)
+          && (!isEncryptedConversationMember(conversationId) || isCanonicalUUID(messageId))
+          && request.resource.data.keys().hasOnly(["messageId", "pinnedBy", "pinnedAt"])
+          && request.resource.data.keys().hasAll(["messageId", "pinnedBy", "pinnedAt"])
+          && request.resource.data.messageId == messageId
+          && request.resource.data.pinnedBy == request.auth.uid
+          && request.resource.data.pinnedAt == request.time
+          && exists(/databases/$(database)/documents/conversations/$(conversationId)/messages/$(messageId))
+          && target().data.get("deletedAt", null) == null;
+        // Either member can remove a pin, including one whose target was subsequently unsent.
+        allow delete: if isConversationMember(conversationId);
+        allow update: if false;
+      }
+
+      // Kept outside messages so older encrypted clients retain their exact
+      // message schema. Preview creation/deletion accompanies its message.
+      match /notificationPreviews/{messageId} {
+        function previewMessagePath() {
+          return /databases/$(database)/documents/conversations/$(conversationId)/messages/$(messageId);
+        }
+        function previewMessageAfter() {
+          return getAfter(previewMessagePath()).data;
+        }
+        allow read: if isEncryptedConversationMember(conversationId);
+        allow create: if validEncryptedRecord(conversationId, 2048)
+          && isCanonicalUUID(messageId)
+          && request.resource.data.keys().hasOnly([
+            "senderId", "encryption", "keyEpoch", "revision", "ciphertext"
+          ])
+          && request.resource.data.senderId == request.auth.uid
+          && request.resource.data.revision == 1
+          && !exists(previewMessagePath())
+          && previewMessageAfter().senderId == request.resource.data.senderId
+          && previewMessageAfter().encryption == request.resource.data.encryption
+          && previewMessageAfter().keyEpoch == request.resource.data.keyEpoch
+          && previewMessageAfter().revision == 1
+          && previewMessageAfter().type == "encrypted"
+          && previewMessageAfter().createdAt == request.time;
+        allow update: if false;
+        allow delete: if isEncryptedConversationMember(conversationId)
+          && resource.data.senderId == request.auth.uid
+          && get(previewMessagePath()).data.get("deletedAt", null) == null
+          && previewMessageAfter().senderId == request.auth.uid
+          && previewMessageAfter().encryption == resource.data.encryption
+          && previewMessageAfter().keyEpoch == resource.data.keyEpoch
+          && previewMessageAfter().deletedAt == request.time
+          && previewMessageAfter().ciphertext is bytes
+          && previewMessageAfter().ciphertext.size() == 0;
+      }
+
+      match /messages/{messageId} {
+        allow read: if isConversationMember(conversationId);
+        allow create: if validEncryptedRecord(conversationId, 69632)
+          && isCanonicalUUID(messageId)
+          && request.resource.data.keys().hasOnly([
+            "senderId", "clientId", "type", "encryption", "keyEpoch", "revision",
+            "ciphertext", "createdAt", "editedAt", "deletedAt", "delivery"
+          ])
+          && request.resource.data.senderId == request.auth.uid
+          && request.resource.data.clientId == messageId
+          && request.resource.data.type == "encrypted"
+          && request.resource.data.revision == 1
+          && request.resource.data.createdAt == request.time
+          && request.resource.data.get("editedAt", null) == null
+          && request.resource.data.get("deletedAt", null) == null
+          && request.resource.data.get("delivery", "quiet") == "quiet";
+        allow update: if isEncryptedConversationMember(conversationId)
+          && resource.data.senderId == request.auth.uid
+          && resource.data.get("deletedAt", null) == null
+          && request.resource.data.revision is int
+          && request.resource.data.revision > 0
+          && request.resource.data.revision <= 9007199254740991
+          && request.resource.data.revision == resource.data.revision + 1
+          && (
+            (validEncryptedRecord(conversationId, 69632)
+              && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+                "ciphertext", "revision", "editedAt"
+              ])
+              && request.resource.data.editedAt == request.time)
+            || (request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+                "ciphertext", "revision", "deletedAt"
+              ])
+              && request.resource.data.ciphertext is bytes
+              && request.resource.data.ciphertext.size() == 0
+              && request.resource.data.deletedAt == request.time)
+          );
+        allow create: if isLegacyConversationMember(conversationId)
+          && request.resource.data.keys().hasOnly([
+            "senderId",
+            "clientId",
+            "type",
+            "text",
+            "replyToId",
+            "attachmentGroupId",
+            "attachmentGroupIndex",
+            "attachmentGroupCount",
+            "delivery",
+            "createdAt",
+            "editedAt",
+            "deletedAt"
+          ])
+          && request.resource.data.keys().hasAll([
+            "senderId",
+            "clientId",
+            "type",
+            "createdAt"
+          ])
+          && request.resource.data.senderId == request.auth.uid
+          && isUUID(messageId)
+          && request.resource.data.clientId == messageId
+          && request.resource.data.type in [
+            "text",
+            "link",
+            "image",
+            "video",
+            "audio",
+            "file",
+            "location"
+          ]
+          && (
+            !(request.resource.data.type in [
+              "image",
+              "video",
+              "audio",
+              "file"
+            ])
+            || hasOwnedAttachment(conversationId, messageId)
+          )
+          && request.resource.data.get("text", "") is string
+          && request.resource.data.get("text", "").size() <= 10000
+          && (
+            !request.resource.data.keys().hasAny(["delivery"])
+            || request.resource.data.delivery == "quiet"
+          )
+          && request.resource.data.get("attachmentGroupId", "") is string
+          && request.resource.data.get("attachmentGroupIndex", -1) is int
+          && request.resource.data.get("attachmentGroupCount", 0) is int
+          && (
+            (
+              request.resource.data.get("attachmentGroupId", "") == ""
+              && request.resource.data.get("attachmentGroupIndex", -1) == -1
+              && request.resource.data.get("attachmentGroupCount", 0) == 0
+            )
+            || (
+              request.resource.data.type == "image"
+              && isUUID(request.resource.data.attachmentGroupId)
+              && request.resource.data.attachmentGroupIndex >= 0
+              && request.resource.data.attachmentGroupCount >= 2
+              && request.resource.data.attachmentGroupCount <= 10
+              && request.resource.data.attachmentGroupIndex
+                < request.resource.data.attachmentGroupCount
+              && (
+                (
+                  request.resource.data.attachmentGroupIndex == 0
+                  && request.resource.data.attachmentGroupId == messageId
+                )
+                || (
+                  request.resource.data.attachmentGroupIndex > 0
+                  && exists(
+                    /databases/$(database)/documents/conversations/$(conversationId)/messages/$(request.resource.data.attachmentGroupId)
+                  )
+                  && get(
+                    /databases/$(database)/documents/conversations/$(conversationId)/messages/$(request.resource.data.attachmentGroupId)
+                  ).data.senderId == request.auth.uid
+                  && get(
+                    /databases/$(database)/documents/conversations/$(conversationId)/messages/$(request.resource.data.attachmentGroupId)
+                  ).data.type == "image"
+                  && get(
+                    /databases/$(database)/documents/conversations/$(conversationId)/messages/$(request.resource.data.attachmentGroupId)
+                  ).data.attachmentGroupId
+                    == request.resource.data.attachmentGroupId
+                  && get(
+                    /databases/$(database)/documents/conversations/$(conversationId)/messages/$(request.resource.data.attachmentGroupId)
+                  ).data.attachmentGroupIndex == 0
+                  && get(
+                    /databases/$(database)/documents/conversations/$(conversationId)/messages/$(request.resource.data.attachmentGroupId)
+                  ).data.attachmentGroupCount
+                    == request.resource.data.attachmentGroupCount
+                )
+              )
+            )
+          )
+          && request.resource.data.get("replyToId", "") is string
+          && (
+            request.resource.data.get("replyToId", "") == ""
+            || (
+              isUUID(request.resource.data.replyToId)
+              && exists(
+                /databases/$(database)/documents/conversations/$(conversationId)/messages/$(request.resource.data.replyToId)
+              )
+            )
+          )
+          && request.resource.data.createdAt == request.time
+          && request.resource.data.get("editedAt", null) == null
+          && request.resource.data.get("deletedAt", null) == null;
+        allow update: if isLegacyConversationMember(conversationId)
+          && resource.data.senderId == request.auth.uid
+          && (
+            (
+              resource.data.type in ["text", "link"]
+              && resource.data.get("deletedAt", null) == null
+              && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+                "text",
+                "type",
+                "editedAt"
+              ])
+              && request.resource.data.type in ["text", "link"]
+              && request.resource.data.text is string
+              && request.resource.data.text.size() > 0
+              && request.resource.data.text.size() <= 10000
+              && request.resource.data.editedAt == request.time
+            )
+            || (
+              resource.data.get("deletedAt", null) == null
+              && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+                "text",
+                "deletedAt"
+              ])
+              && request.resource.data.text == ""
+              && request.resource.data.deletedAt == request.time
+            )
+          );
+        allow delete: if false;
+      }
+
+      // Each participant can attach one current reaction to each message.
+      // Keeping these in a flat collection gives the conversation one listener
+      // rather than a listener per message.
+      match /reactions/{reactionId} {
+        allow create, update: if validEncryptedRecord(conversationId, 4096)
+          && request.resource.data.keys().hasOnly([
+            "messageId", "userId", "encryption", "keyEpoch", "revision", "ciphertext", "updatedAt"
+          ])
+          && request.resource.data.userId == request.auth.uid
+          && isCanonicalUUID(request.resource.data.messageId)
+          && reactionId == request.resource.data.messageId + "--" + request.auth.uid
+          && get(/databases/$(database)/documents/conversations/$(conversationId)/messages/$(request.resource.data.messageId)).data.get("deletedAt", null) == null
+          && request.resource.data.updatedAt == request.time
+          && (!exists(/databases/$(database)/documents/conversations/$(conversationId)/reactions/$(reactionId))
+            || (request.resource.data.userId == resource.data.userId
+              && request.resource.data.messageId == resource.data.messageId
+              && request.resource.data.revision > resource.data.revision));
+        // Removal is an encrypted tombstone so revision history is retained.
+
+        allow read: if isConversationMember(conversationId);
+        allow create: if isLegacyConversationMember(conversationId)
+          && request.resource.data.keys().hasOnly([
+            "messageId",
+            "userId",
+            "emoji",
+            "updatedAt"
+          ])
+          && request.resource.data.userId == request.auth.uid
+          && reactionId
+            == request.resource.data.messageId + "--" + request.auth.uid
+          && request.resource.data.messageId is string
+          && exists(
+            /databases/$(database)/documents/conversations/$(conversationId)/messages/$(request.resource.data.messageId)
+          )
+          && get(
+            /databases/$(database)/documents/conversations/$(conversationId)/messages/$(request.resource.data.messageId)
+          ).data.get("deletedAt", null) == null
+          && request.resource.data.emoji is string
+          && request.resource.data.emoji.size() > 0
+          && request.resource.data.emoji.size() <= 16
+          && request.resource.data.updatedAt == request.time;
+        allow update: if isLegacyConversationMember(conversationId)
+          && resource.data.userId == request.auth.uid
+          && get(
+            /databases/$(database)/documents/conversations/$(conversationId)/messages/$(resource.data.messageId)
+          ).data.get("deletedAt", null) == null
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+            "emoji",
+            "updatedAt"
+          ])
+          && request.resource.data.emoji is string
+          && request.resource.data.emoji.size() > 0
+          && request.resource.data.emoji.size() <= 16
+          && request.resource.data.updatedAt == request.time;
+        allow delete: if isLegacyConversationMember(conversationId)
+          && resource.data.userId == request.auth.uid;
+      }
+
+      // One document per participant. This is enough to derive delivered/read
+      // state without writing one receipt document per message.
+      match /readStates/{uid} {
+        allow read: if isConversationMember(conversationId);
+        allow create: if isConversationMember(conversationId)
+          && isSelf(uid)
+          && request.resource.data.keys().hasOnly([
+            "userId",
+            "lastDeliveredMessageId",
+            "lastDeliveredAt",
+            "lastReadMessageId",
+            "lastReadAt"
+          ])
+          && request.resource.data.userId == request.auth.uid
+          && (
+            !request.resource.data.keys().hasAny([
+              "lastDeliveredMessageId",
+              "lastDeliveredAt"
+            ])
+            || (
+              request.resource.data.lastDeliveredMessageId is string
+              && request.resource.data.lastDeliveredAt == request.time
+            )
+          )
+          && (
+            !request.resource.data.keys().hasAny([
+              "lastReadMessageId",
+              "lastReadAt"
+            ])
+            || (
+              request.resource.data.lastReadMessageId is string
+              && request.resource.data.lastReadAt == request.time
+            )
+          );
+        allow update: if isConversationMember(conversationId)
+          && isSelf(uid)
+          && request.resource.data.keys().hasOnly([
+            "userId",
+            "lastDeliveredMessageId",
+            "lastDeliveredAt",
+            "lastReadMessageId",
+            "lastReadAt"
+          ])
+          && request.resource.data.userId == request.auth.uid
+          && (
+            !request.resource.data.keys().hasAny([
+              "lastDeliveredMessageId",
+              "lastDeliveredAt"
+            ])
+            || (
+              request.resource.data.lastDeliveredMessageId is string
+              && request.resource.data.lastDeliveredAt is timestamp
+            )
+          )
+          && (
+            !request.resource.data.keys().hasAny([
+              "lastReadMessageId",
+              "lastReadAt"
+            ])
+            || (
+              request.resource.data.lastReadMessageId is string
+              && request.resource.data.lastReadAt is timestamp
+            )
+          )
+          && (
+            !request.resource.data.diff(resource.data).affectedKeys().hasAny([
+              "lastDeliveredMessageId",
+              "lastDeliveredAt"
+            ])
+            || (
+              request.resource.data.lastDeliveredMessageId is string
+              && request.resource.data.lastDeliveredAt == request.time
+            )
+          )
+          && (
+            !request.resource.data.diff(resource.data).affectedKeys().hasAny([
+              "lastReadMessageId",
+              "lastReadAt"
+            ])
+            || (
+              request.resource.data.lastReadMessageId is string
+              && request.resource.data.lastReadAt == request.time
+            )
+          );
+        allow delete: if false;
+      }
+
+      match /typing/{uid} {
+        allow read: if isConversationMember(conversationId);
+        allow create, update: if isConversationMember(conversationId)
+          && isSelf(uid)
+          && request.resource.data.keys().hasOnly([
+            "userId",
+            "isTyping",
+            "updatedAt",
+            "expiresAt"
+          ])
+          && request.resource.data.userId == request.auth.uid
+          && request.resource.data.isTyping is bool
+          && request.resource.data.updatedAt == request.time
+          && request.resource.data.expiresAt is timestamp
+          && request.resource.data.expiresAt >= request.time
+          && request.resource.data.expiresAt <= request.time + duration.value(2, "m");
+        allow delete: if isConversationMember(conversationId) && isSelf(uid);
+      }
+
+      // Sharing intent is explicit and persistent. A false record remains so
+      // clients never infer opt-in from an old or missing coordinate.
+      match /locationSharing/{uid} {
+        allow read: if isConversationMember(conversationId);
+        allow create, update: if isEncryptedConversationMember(conversationId)
+          && isSelf(uid) && validLocationSource(request.resource.data)
+          && request.resource.data.keys().hasOnly([
+            "userId", "isSharing", "updatedAt", "sourceDeviceId", "sourceGeneration", "sourceMutationId"
+          ])
+          && request.resource.data.userId == request.auth.uid
+          && request.resource.data.isSharing is bool
+          && (!request.resource.data.isSharing || request.resource.data.sourceDeviceId != "unclaimed-location-source")
+          && isCanonicalUUID(request.resource.data.sourceMutationId)
+          && request.resource.data.updatedAt == request.time
+          && (!exists(/databases/$(database)/documents/conversations/$(conversationId)/locationSharing/$(uid))
+            ? request.resource.data.sourceGeneration == 1
+            : (request.resource.data.sourceGeneration == resource.data.sourceGeneration + 1
+              && request.resource.data.sourceMutationId != resource.data.sourceMutationId
+              && (request.resource.data.isSharing || request.resource.data.sourceDeviceId == resource.data.sourceDeviceId)))
+          // Every mutation fences the old source, including an absent-point transaction.
+          && !existsAfter(/databases/$(database)/documents/conversations/$(conversationId)/locations/$(uid));
+        allow create, update: if isLegacyConversationMember(conversationId)
+          && isSelf(uid)
+          && request.resource.data.keys().hasOnly([
+            "userId",
+            "isSharing",
+            "updatedAt"
+          ])
+          && request.resource.data.userId == request.auth.uid
+          && request.resource.data.isSharing is bool
+          && request.resource.data.updatedAt == request.time
+          && (
+            request.resource.data.isSharing
+            || !existsAfter(
+              /databases/$(database)/documents/conversations/$(conversationId)
+                /locations/$(uid)
+            )
+          );
+        // Keep an explicit false record instead of allowing an intent delete
+        // that could orphan a precise coordinate.
+        allow delete: if false;
+      }
+
+      // A sharing person stores one replaceable latest point. The timestamp
+      // may grow stale and remains readable until that person explicitly
+      // disables sharing, at which point the client deletes this document.
+      // expiresAt remains accepted only for compatibility with earlier builds.
+      match /locations/{uid} {
+        allow create, update: if validEncryptedRecord(conversationId, 4096)
+          && isSelf(uid)
+          && request.resource.data.keys().hasOnly([
+            "userId", "encryption", "keyEpoch", "revision", "ciphertext", "updatedAt", "sourceDeviceId", "sourceGeneration"
+          ])
+          && request.resource.data.userId == request.auth.uid
+          && validLocationSource(request.resource.data)
+          && getAfter(/databases/$(database)/documents/conversations/$(conversationId)/locationSharing/$(uid)).data.isSharing == true
+          && sameLocationSource(request.resource.data,
+            getAfter(/databases/$(database)/documents/conversations/$(conversationId)/locationSharing/$(uid)).data)
+          // Point writes never mutate their own source authority in the same batch.
+          && sameLocationSource(
+            get(/databases/$(database)/documents/conversations/$(conversationId)/locationSharing/$(uid)).data,
+            getAfter(/databases/$(database)/documents/conversations/$(conversationId)/locationSharing/$(uid)).data)
+          && request.resource.data.updatedAt == request.time
+          && (!exists(/databases/$(database)/documents/conversations/$(conversationId)/locations/$(uid))
+            || request.resource.data.revision > resource.data.revision);
+        allow delete: if isEncryptedConversationMember(conversationId) && isSelf(uid)
+          && (!exists(/databases/$(database)/documents/conversations/$(conversationId)/locations/$(uid))
+            || sameLocationSource(resource.data,
+              get(/databases/$(database)/documents/conversations/$(conversationId)/locationSharing/$(uid)).data))
+          && (!exists(/databases/$(database)/documents/conversations/$(conversationId)/locationSharing/$(uid))
+            ? getAfter(/databases/$(database)/documents/conversations/$(conversationId)/locationSharing/$(uid)).data.sourceGeneration == 1
+            : getAfter(/databases/$(database)/documents/conversations/$(conversationId)/locationSharing/$(uid)).data.sourceGeneration
+              == get(/databases/$(database)/documents/conversations/$(conversationId)/locationSharing/$(uid)).data.sourceGeneration + 1);
+
+        allow read: if isConversationMember(conversationId);
+        allow create, update: if isLegacyConversationMember(conversationId)
+          && isSelf(uid)
+          && getAfter(
+            /databases/$(database)/documents/conversations/$(conversationId)
+              /locationSharing/$(uid)
+          ).data.isSharing == true
+          && request.resource.data.keys().hasOnly([
+            "userId",
+            "latitude",
+            "longitude",
+            "horizontalAccuracy",
+            "recordedAt",
+            "updatedAt",
+            "expiresAt"
+          ])
+          && request.resource.data.userId == request.auth.uid
+          && request.resource.data.latitude is number
+          && request.resource.data.latitude >= -90
+          && request.resource.data.latitude <= 90
+          && request.resource.data.longitude is number
+          && request.resource.data.longitude >= -180
+          && request.resource.data.longitude <= 180
+          && request.resource.data.horizontalAccuracy is number
+          && request.resource.data.horizontalAccuracy >= 0
+          && request.resource.data.horizontalAccuracy <= 10000
+          && request.resource.data.get("recordedAt", request.time) is timestamp
+          && request.resource.data.get("recordedAt", request.time)
+            <= request.time + duration.value(5, "m")
+          && request.resource.data.updatedAt == request.time
+          && (
+            request.resource.data.get("expiresAt", null) == null
+            || (
+              request.resource.data.expiresAt is timestamp
+              && request.resource.data.expiresAt > request.time
+              && request.resource.data.expiresAt <= request.time + duration.value(24, "h")
+            )
+          );
+        allow delete: if isLegacyConversationMember(conversationId) && isSelf(uid);
+      }
+
+      // Only routing, length, and ciphertext digest are public. Names, MIME,
+      // dimensions, duration and per-blob keys stay inside the encrypted message.
+      match /encryptedBlobs/{blobId} {
+        allow read: if isEncryptedConversationMember(conversationId);
+        allow create: if isEncryptedConversationMember(conversationId)
+          && isCanonicalUUID(blobId)
+          && request.resource.data.keys().hasOnly([
+            "ownerId", "messageId", "keyEpoch", "revision", "byteSize", "digest", "createdAt"
+          ])
+          && request.resource.data.ownerId == request.auth.uid
+          && isCanonicalUUID(request.resource.data.messageId)
+          && messageIsAbsentOrOwned(conversationId, request.resource.data.messageId)
+          && request.resource.data.keyEpoch == conversation(conversationId).data.keyEpoch
+          && request.resource.data.revision is int
+          && request.resource.data.revision > 0
+          && request.resource.data.revision <= 9007199254740991
+          && request.resource.data.byteSize is int
+          && request.resource.data.byteSize > 0
+          && request.resource.data.byteSize <= 200 * 1024 * 1024 + 4096
+          && request.resource.data.digest is string
+          && request.resource.data.digest.matches('^[0-9a-f]{64}$')
+          && request.resource.data.createdAt == request.time;
+        allow update: if false;
+        allow delete: if isEncryptedConversationMember(conversationId)
+          && resource.data.ownerId == request.auth.uid;
+      }
+
+      match /attachments/{attachmentId} {
+        allow read: if isConversationMember(conversationId);
+        allow create: if isLegacyConversationMember(conversationId)
+          && isUUID(attachmentId)
+          && request.resource.data.keys().hasOnly([
+            "ownerId",
+            "messageId",
+            "storagePath",
+            "fileName",
+            "contentType",
+            "byteSize",
+            "audioDurationMs",
+            "createdAt"
+          ])
+          && request.resource.data.ownerId == request.auth.uid
+          && request.resource.data.messageId is string
+          && request.resource.data.messageId == attachmentId
+          && messageIsAbsentOrOwned(conversationId, attachmentId)
+          && request.resource.data.storagePath is string
+          && request.resource.data.fileName is string
+          && request.resource.data.fileName.size() <= 255
+          && request.resource.data.storagePath
+            == "conversations/" + conversationId
+              + "/attachments/" + attachmentId
+              + "/" + request.resource.data.fileName
+          && request.resource.data.contentType is string
+          && request.resource.data.contentType.size() <= 255
+          && request.resource.data.byteSize is int
+          && request.resource.data.byteSize > 0
+          && (request.resource.data.byteSize <= 100 * 1024 * 1024
+            || (request.resource.data.contentType.matches("^(image|video)/.*")
+              && request.resource.data.byteSize <= 200 * 1024 * 1024))
+          && (
+            request.resource.data.get("audioDurationMs", 0) == 0
+            || (
+              request.resource.data.audioDurationMs is int
+              && request.resource.data.audioDurationMs > 0
+              && request.resource.data.audioDurationMs <= 10 * 60 * 1000
+              && request.resource.data.contentType.matches("^audio/.*")
+            )
+          )
+          && request.resource.data.createdAt == request.time;
+        allow update: if false;
+        allow delete: if isLegacyConversationMember(conversationId)
+          && resource.data.ownerId == request.auth.uid;
+      }
+    }
+  }
+}

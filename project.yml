@@ -1,0 +1,380 @@
+---
+name: Peapod
+options:
+  bundleIdPrefix: org.example
+  deploymentTarget:
+    iOS: '18.0'
+    macOS: '15.0'
+  groupSortPosition: top
+  generateEmptyDirectories: true
+  xcodeVersion: '26.0'
+settings:
+  base:
+    SWIFT_VERSION: '6.0'
+    CURRENT_PROJECT_VERSION: 1
+    MARKETING_VERSION: 0.1.1
+    CODE_SIGN_STYLE: Automatic
+    ENABLE_USER_SCRIPT_SANDBOXING: true
+    STRING_CATALOG_GENERATE_SYMBOLS: true
+    LOCALIZATION_PREFERS_STRING_CATALOGS: true
+    TARGETED_DEVICE_FAMILY: '1'
+    SUPPORTS_MACCATALYST: false
+    SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD: false
+packages:
+  ChatLayout:
+    url: https://github.com/ekazaev/ChatLayout
+    exactVersion: 2.5.2
+  MinesE2EE:
+    path: packages/MinesE2EE
+  Firebase:
+    url: https://github.com/firebase/firebase-ios-sdk.git
+    exactVersion: 12.17.0
+targets:
+  Peapod:
+    type: application
+    platform: iOS
+    sources:
+    - path: shared/ShareExtension/EncryptedShareMessageWriter.swift
+    - path: apps/ios/App
+      excludes:
+      - Resources
+    - path: shared/Sources
+    - path: apps/ios/App/Resources/Assets.xcassets
+      buildPhase: resources
+    - path: apps/ios/App/Resources
+      optional: true
+      buildPhase: resources
+      includes:
+      - GoogleService-Info.plist
+    - path: shared/Resources/GiftWrap.xcassets
+      buildPhase: resources
+    - path: shared/Resources/SnowfallPreview.xcassets
+      buildPhase: resources
+    - path: shared/Resources/PrivacyInfo.xcprivacy
+      buildPhase: resources
+    info:
+      path: apps/ios/App/Resources/Info.plist
+      properties:
+        CFBundleDisplayName: Peapod
+        CFBundleShortVersionString: "$(MARKETING_VERSION)"
+        CFBundleVersion: "$(CURRENT_PROJECT_VERSION)"
+        CFBundleURLTypes:
+        - CFBundleURLName: "$(PEAPOD_BUNDLE_ID)"
+          CFBundleURLSchemes:
+          - peapod
+        NSUserActivityTypes:
+        - INSendMessageIntent
+        NSLocationWhenInUseUsageDescription: Peapod uses your location only while
+          you choose to share your live distance.
+        NSLocationAlwaysAndWhenInUseUsageDescription: Allow Peapod to keep your live
+          distance updated while location sharing is active.
+        NSMicrophoneUsageDescription: Peapod uses the microphone when you record a
+          voice message.
+        NSPhotoLibraryAddUsageDescription: Save photos from your conversation to your
+          library.
+        NSPhotoLibraryUsageDescription: Choose photos and videos to send in your conversation.
+        UIBackgroundModes:
+        - location
+        - remote-notification
+        UILaunchScreen:
+          UIColorName: LaunchBackground
+        PeapodAppGroupIdentifier: "$(PEAPOD_APP_GROUP)"
+        PeapodAuthKeychainAccessGroup: "$(AppIdentifierPrefix)$(PEAPOD_AUTH_KEYCHAIN_SUFFIX)"
+        PeapodE2EEKeychainAccessGroup: "$(AppIdentifierPrefix)$(PEAPOD_E2EE_KEYCHAIN_SUFFIX)"
+        PeapodE2EEKeychainSuffix: ".$(PEAPOD_E2EE_KEYCHAIN_SUFFIX)"
+    entitlements:
+      path: apps/ios/App/Resources/Mines.entitlements
+      properties:
+        aps-environment: development
+        com.apple.developer.applesignin:
+        - Default
+        com.apple.developer.devicecheck.appattest-environment: production
+        com.apple.developer.usernotifications.communication: true
+        com.apple.developer.usernotifications.time-sensitive: true
+        com.apple.security.application-groups:
+        - "$(PEAPOD_APP_GROUP)"
+        keychain-access-groups:
+        - "$(AppIdentifierPrefix)$(PEAPOD_AUTH_KEYCHAIN_SUFFIX)"
+        - "$(AppIdentifierPrefix)$(PEAPOD_E2EE_KEYCHAIN_SUFFIX)"
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: "$(PEAPOD_BUNDLE_ID)"
+        PRODUCT_NAME: Peapod
+        TARGETED_DEVICE_FAMILY: '1'
+        INFOPLIST_KEY_CFBundleDisplayName: Peapod
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
+    dependencies:
+    - package: ChatLayout
+    - package: MinesE2EE
+      product: MinesE2EE
+    - target: PeapodShare
+      embed: true
+    - target: PeapodNotificationService
+      embed: true
+    - package: Firebase
+      product: FirebaseAppCheck
+    - package: Firebase
+      product: FirebaseAuth
+    - package: Firebase
+      product: FirebaseFirestore
+    - package: Firebase
+      product: FirebaseFunctions
+    - package: Firebase
+      product: FirebaseMessaging
+    - package: Firebase
+      product: FirebaseStorage
+  PeapodShare:
+    type: app-extension
+    platform: iOS
+    sources:
+    - path: apps/ios/ShareExtension
+    - path: shared/ShareExtension
+    - path: shared/Sources/AppGroup.swift
+    - path: shared/Sources/ShareMessageCommitRequest.swift
+    - path: shared/Sources/ShareExtensionLimits.swift
+    - path: shared/Sources/ShareURLRepresentation.swift
+    - path: apps/ios/App/Resources
+      optional: true
+      buildPhase: resources
+      includes:
+      - GoogleService-Info.plist
+    - path: shared/Sources/BuildIdentity.swift
+    info:
+      path: apps/ios/ShareExtension/Info.plist
+      properties:
+        CFBundleDisplayName: Peapod
+        CFBundleShortVersionString: "$(MARKETING_VERSION)"
+        CFBundleVersion: "$(CURRENT_PROJECT_VERSION)"
+        NSExtension:
+          NSExtensionAttributes:
+            NSExtensionActivationRule:
+              NSExtensionActivationSupportsFileWithMaxCount: 10
+              NSExtensionActivationSupportsImageWithMaxCount: 10
+              NSExtensionActivationSupportsMovieWithMaxCount: 5
+              NSExtensionActivationSupportsText: true
+              NSExtensionActivationSupportsWebURLWithMaxCount: 1
+          NSExtensionPointIdentifier: com.apple.share-services
+          NSExtensionPrincipalClass: "$(PRODUCT_MODULE_NAME).ShareViewController"
+        PeapodAppGroupIdentifier: "$(PEAPOD_APP_GROUP)"
+        PeapodAuthKeychainAccessGroup: "$(AppIdentifierPrefix)$(PEAPOD_AUTH_KEYCHAIN_SUFFIX)"
+        PeapodE2EEKeychainAccessGroup: "$(AppIdentifierPrefix)$(PEAPOD_E2EE_KEYCHAIN_SUFFIX)"
+        PeapodE2EEKeychainSuffix: ".$(PEAPOD_E2EE_KEYCHAIN_SUFFIX)"
+    entitlements:
+      path: apps/ios/ShareExtension/MinesShare.entitlements
+      properties:
+        com.apple.security.application-groups:
+        - "$(PEAPOD_APP_GROUP)"
+        keychain-access-groups:
+        - "$(AppIdentifierPrefix)$(PEAPOD_AUTH_KEYCHAIN_SUFFIX)"
+        - "$(AppIdentifierPrefix)$(PEAPOD_E2EE_KEYCHAIN_SUFFIX)"
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: "$(PEAPOD_BUNDLE_ID).share"
+        PRODUCT_NAME: PeapodShare
+        TARGETED_DEVICE_FAMILY: '1'
+        INFOPLIST_KEY_CFBundleDisplayName: Peapod
+        APPLICATION_EXTENSION_API_ONLY: true
+        SKIP_INSTALL: true
+    dependencies:
+    - package: MinesE2EE
+      product: MinesE2EE
+    - package: Firebase
+      product: FirebaseAuth
+  PeapodNotificationService:
+    type: app-extension
+    platform: iOS
+    sources:
+    - path: apps/ios/NotificationServiceExtension
+    - path: shared/Sources/AppGroup.swift
+    - path: shared/Sources/Services/Notifications/MessageNotificationPayload.swift
+    - path: shared/Sources/BuildIdentity.swift
+    info:
+      path: apps/ios/NotificationServiceExtension/Info.plist
+      properties:
+        CFBundleDisplayName: Peapod
+        CFBundleShortVersionString: "$(MARKETING_VERSION)"
+        CFBundleVersion: "$(CURRENT_PROJECT_VERSION)"
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.usernotifications.service
+          NSExtensionPrincipalClass: "$(PRODUCT_MODULE_NAME).NotificationService"
+        PeapodAppGroupIdentifier: "$(PEAPOD_APP_GROUP)"
+        PeapodAuthKeychainAccessGroup: "$(AppIdentifierPrefix)$(PEAPOD_AUTH_KEYCHAIN_SUFFIX)"
+        PeapodE2EEKeychainAccessGroup: "$(AppIdentifierPrefix)$(PEAPOD_E2EE_KEYCHAIN_SUFFIX)"
+        PeapodE2EEKeychainSuffix: ".$(PEAPOD_E2EE_KEYCHAIN_SUFFIX)"
+    entitlements:
+      path: apps/ios/NotificationServiceExtension/MinesNotificationService.entitlements
+      properties:
+        com.apple.security.application-groups:
+        - "$(PEAPOD_APP_GROUP)"
+        keychain-access-groups:
+        - "$(AppIdentifierPrefix)$(PEAPOD_E2EE_KEYCHAIN_SUFFIX)"
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: "$(PEAPOD_BUNDLE_ID).notification-service"
+        PRODUCT_NAME: PeapodNotificationService
+        TARGETED_DEVICE_FAMILY: '1'
+        INFOPLIST_KEY_CFBundleDisplayName: Peapod
+        APPLICATION_EXTENSION_API_ONLY: true
+        SKIP_INSTALL: true
+    dependencies:
+    - package: MinesE2EE
+      product: MinesE2EE
+  PeapodMac:
+    type: application
+    platform: macOS
+    sources:
+    - path: shared/ShareExtension/EncryptedShareMessageWriter.swift
+    - path: apps/macos/App
+      excludes:
+      - Resources
+    - path: shared/Sources
+    - path: apps/macos/App/Resources/Assets.xcassets
+      buildPhase: resources
+    - path: apps/ios/App/Resources
+      optional: true
+      buildPhase: resources
+      includes:
+      - GoogleService-Info.plist
+    - path: shared/Resources/GiftWrap.xcassets
+      buildPhase: resources
+    - path: shared/Resources/SnowfallPreview.xcassets
+      buildPhase: resources
+    - path: shared/Resources/PrivacyInfo.xcprivacy
+      buildPhase: resources
+    info:
+      path: apps/macos/App/Resources/Info.plist
+      properties:
+        CFBundleDisplayName: Peapod
+        CFBundleShortVersionString: "$(MARKETING_VERSION)"
+        CFBundleVersion: "$(CURRENT_PROJECT_VERSION)"
+        CFBundleURLTypes:
+        - CFBundleURLName: "$(PEAPOD_BUNDLE_ID)"
+          CFBundleURLSchemes:
+          - peapod
+        LSApplicationCategoryType: public.app-category.social-networking
+        NSMicrophoneUsageDescription: Peapod uses the microphone when you record a
+          voice message.
+        NSPhotoLibraryUsageDescription: Choose photos and videos to send in your conversation.
+        PeapodAppGroupIdentifier: "$(PEAPOD_APP_GROUP)"
+        PeapodAuthKeychainAccessGroup: "$(AppIdentifierPrefix)$(PEAPOD_AUTH_KEYCHAIN_SUFFIX)"
+        PeapodE2EEKeychainAccessGroup: "$(AppIdentifierPrefix)$(PEAPOD_E2EE_KEYCHAIN_SUFFIX)"
+        PeapodE2EEKeychainSuffix: ".$(PEAPOD_E2EE_KEYCHAIN_SUFFIX)"
+    entitlements:
+      path: apps/macos/App/Resources/MinesMac.entitlements
+      properties:
+        com.apple.developer.aps-environment: development
+        com.apple.developer.applesignin:
+        - Default
+        com.apple.developer.usernotifications.time-sensitive: true
+        com.apple.security.app-sandbox: true
+        com.apple.security.application-groups:
+        - "$(PEAPOD_APP_GROUP)"
+        com.apple.security.device.audio-input: true
+        com.apple.security.files.user-selected.read-write: true
+        com.apple.security.network.client: true
+        keychain-access-groups:
+        - "$(AppIdentifierPrefix)$(PEAPOD_AUTH_KEYCHAIN_SUFFIX)"
+        - "$(AppIdentifierPrefix)$(PEAPOD_E2EE_KEYCHAIN_SUFFIX)"
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: "$(PEAPOD_BUNDLE_ID)"
+        PRODUCT_NAME: PeapodMac
+        INFOPLIST_KEY_CFBundleDisplayName: Peapod
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
+        ENABLE_HARDENED_RUNTIME: true
+        CODE_SIGN_INJECT_BASE_ENTITLEMENTS: true
+    dependencies:
+    - sdk: AVKit.framework
+    - package: MinesE2EE
+      product: MinesE2EE
+    - target: PeapodMacShare
+      embed: true
+    - package: Firebase
+      product: FirebaseAppCheck
+    - package: Firebase
+      product: FirebaseAuth
+    - package: Firebase
+      product: FirebaseFirestore
+    - package: Firebase
+      product: FirebaseFunctions
+    - package: Firebase
+      product: FirebaseMessaging
+    - package: Firebase
+      product: FirebaseStorage
+  PeapodMacShare:
+    type: app-extension
+    platform: macOS
+    sources:
+    - path: shared/ShareExtension
+    - path: shared/Sources/AppGroup.swift
+    - path: shared/Sources/ShareMessageCommitRequest.swift
+    - path: shared/Sources/ShareExtensionLimits.swift
+    - path: shared/Sources/ShareURLRepresentation.swift
+    - path: apps/ios/App/Resources
+      optional: true
+      buildPhase: resources
+      includes:
+      - GoogleService-Info.plist
+    - path: shared/Sources/BuildIdentity.swift
+    info:
+      path: apps/macos/ShareExtension/Info.plist
+      properties:
+        CFBundleDisplayName: Peapod
+        CFBundleShortVersionString: "$(MARKETING_VERSION)"
+        CFBundleVersion: "$(CURRENT_PROJECT_VERSION)"
+        NSExtension:
+          NSExtensionAttributes:
+            NSExtensionActivationRule:
+              NSExtensionActivationSupportsFileWithMaxCount: 10
+              NSExtensionActivationSupportsImageWithMaxCount: 10
+              NSExtensionActivationSupportsMovieWithMaxCount: 5
+              NSExtensionActivationSupportsText: true
+              NSExtensionActivationSupportsWebURLWithMaxCount: 1
+          NSExtensionPointIdentifier: com.apple.share-services
+          NSExtensionPrincipalClass: "$(PRODUCT_MODULE_NAME).ShareViewController"
+        PeapodAppGroupIdentifier: "$(PEAPOD_APP_GROUP)"
+        PeapodAuthKeychainAccessGroup: "$(AppIdentifierPrefix)$(PEAPOD_AUTH_KEYCHAIN_SUFFIX)"
+        PeapodE2EEKeychainAccessGroup: "$(AppIdentifierPrefix)$(PEAPOD_E2EE_KEYCHAIN_SUFFIX)"
+        PeapodE2EEKeychainSuffix: ".$(PEAPOD_E2EE_KEYCHAIN_SUFFIX)"
+    entitlements:
+      path: apps/macos/ShareExtension/MinesMacShare.entitlements
+      properties:
+        com.apple.security.app-sandbox: true
+        com.apple.security.application-groups:
+        - "$(PEAPOD_APP_GROUP)"
+        com.apple.security.files.user-selected.read-only: true
+        com.apple.security.network.client: true
+        keychain-access-groups:
+        - "$(AppIdentifierPrefix)$(PEAPOD_AUTH_KEYCHAIN_SUFFIX)"
+        - "$(AppIdentifierPrefix)$(PEAPOD_E2EE_KEYCHAIN_SUFFIX)"
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: "$(PEAPOD_BUNDLE_ID).mac-share"
+        PRODUCT_NAME: PeapodMacShare
+        REGISTER_APP_GROUPS: true
+        INFOPLIST_KEY_CFBundleDisplayName: Peapod
+        APPLICATION_EXTENSION_API_ONLY: true
+        SKIP_INSTALL: true
+        ENABLE_HARDENED_RUNTIME: true
+    dependencies:
+    - package: MinesE2EE
+      product: MinesE2EE
+    - package: Firebase
+      product: FirebaseAuth
+schemes:
+  Peapod:
+    build:
+      targets:
+        Peapod: all
+        PeapodShare: all
+        PeapodNotificationService: all
+  PeapodMac:
+    build:
+      targets:
+        PeapodMac: all
+        PeapodMacShare: all
+configFiles:
+  Debug: Configurations/Peapod.xcconfig
+  Release: Configurations/Peapod.xcconfig

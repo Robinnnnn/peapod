@@ -1,0 +1,18 @@
+block-beta
+  %% accTitle: Peapod encrypted messaging, key synchronization, and notifications
+  %% accDescr: Person A and Person B each synchronize a conversation key capsule between their own iPhone and Mac using their own iCloud Keychain. Person A encrypts locally, Firebase relays ciphertext through Firestore and Storage, and Person B decrypts locally. A separate notification path uses Cloud Functions, Firebase Cloud Messaging, and Apple's APNs. iPhone previews are decrypted on device.
+  columns 11
+  AK(["iCloud Keychain<br/>Person A's Apple account"]):3 space:5 BK(["iCloud Keychain<br/>Person B's Apple account"]):3
+  A["Person A · iPhone / Mac<br/>1. Encrypt locally"]:3 space F["Your Firebase deployment<br/>2. Store + relay ciphertext<br/>Firestore · messages<br/>Storage · attachments"]:3 space B["Person B · iPhone / Mac<br/>3. Decrypt locally"]:3
+  space:4 N["Cloud Functions<br/>Message-created trigger"]:3 space:4
+  space:4 M["Firebase Cloud Messaging<br/>FCM"]:3 space P["Apple Push Notifications<br/>APNs · iPhone alert"]:3
+  AK -. "Key capsule sync" .-> A
+  A -.-> AK
+  BK -. "Key capsule sync" .-> B
+  B -.-> BK
+  A -- "Ciphertext" --> F
+  F -- "Ciphertext" --> B
+  F -. "New message" .-> N
+  N -.-> M
+  M -.-> P
+  P -. "Notify" .-> B

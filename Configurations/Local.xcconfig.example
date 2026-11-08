@@ -1,0 +1,6 @@
+// Copy to Local.xcconfig and replace these example values.
+// DEVELOPMENT_TEAM = YOURTEAMID
+// PEAPOD_BUNDLE_ID = com.yourorganization.peapod
+// PEAPOD_APP_GROUP = group.$(PEAPOD_BUNDLE_ID)
+// PEAPOD_AUTH_KEYCHAIN_SUFFIX = $(PEAPOD_BUNDLE_ID).shared-auth
+// PEAPOD_E2EE_KEYCHAIN_SUFFIX = $(PEAPOD_BUNDLE_ID).e2ee

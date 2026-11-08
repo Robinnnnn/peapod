@@ -1,0 +1,67 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>CFBundleDevelopmentRegion</key>
+	<string>$(DEVELOPMENT_LANGUAGE)</string>
+	<key>CFBundleDisplayName</key>
+	<string>Peapod</string>
+	<key>CFBundleExecutable</key>
+	<string>$(EXECUTABLE_NAME)</string>
+	<key>CFBundleIdentifier</key>
+	<string>$(PRODUCT_BUNDLE_IDENTIFIER)</string>
+	<key>CFBundleInfoDictionaryVersion</key>
+	<string>6.0</string>
+	<key>CFBundleName</key>
+	<string>$(PRODUCT_NAME)</string>
+	<key>CFBundlePackageType</key>
+	<string>APPL</string>
+	<key>CFBundleShortVersionString</key>
+	<string>$(MARKETING_VERSION)</string>
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleURLName</key>
+			<string>$(PEAPOD_BUNDLE_ID)</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>peapod</string>
+			</array>
+		</dict>
+	</array>
+	<key>CFBundleVersion</key>
+	<string>$(CURRENT_PROJECT_VERSION)</string>
+	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
+	<string>Allow Peapod to keep your live distance updated while location sharing is active.</string>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>Peapod uses your location only while you choose to share your live distance.</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>Peapod uses the microphone when you record a voice message.</string>
+	<key>NSPhotoLibraryAddUsageDescription</key>
+	<string>Save photos from your conversation to your library.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>Choose photos and videos to send in your conversation.</string>
+	<key>NSUserActivityTypes</key>
+	<array>
+		<string>INSendMessageIntent</string>
+	</array>
+	<key>PeapodAppGroupIdentifier</key>
+	<string>$(PEAPOD_APP_GROUP)</string>
+	<key>PeapodAuthKeychainAccessGroup</key>
+	<string>$(AppIdentifierPrefix)$(PEAPOD_AUTH_KEYCHAIN_SUFFIX)</string>
+	<key>PeapodE2EEKeychainAccessGroup</key>
+	<string>$(AppIdentifierPrefix)$(PEAPOD_E2EE_KEYCHAIN_SUFFIX)</string>
+	<key>PeapodE2EEKeychainSuffix</key>
+	<string>.$(PEAPOD_E2EE_KEYCHAIN_SUFFIX)</string>
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>location</string>
+		<string>remote-notification</string>
+	</array>
+	<key>UILaunchScreen</key>
+	<dict>
+		<key>UIColorName</key>
+		<string>LaunchBackground</string>
+	</dict>
+</dict>
+</plist>

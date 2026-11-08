@@ -1,0 +1,39 @@
+{
+  "name": "peapod-functions",
+  "private": true,
+  "main": "lib/index.js",
+  "engines": {
+    "node": "22"
+  },
+  "scripts": {
+    "build": "tsc",
+    "build:watch": "tsc --watch",
+    "serve": "npm run build && firebase emulators:start --config ../../firebase.json --project demo-peapod --only auth,functions,firestore,storage",
+    "test": "npm run build && npm run test:unit",
+    "test:unit": "tsx --test --test-concurrency=2 test/conversationRetention.test.ts test/notificationDeliveryPolicy.test.ts test/unreadBadgePolicy.test.ts test/badgeSyncCoordinator.test.ts test/orphanAttachmentCleanup.test.ts test/pairingRateLimit.test.ts",
+    "test:badge": "npm run build && tsx --test test/unreadBadgePolicy.test.ts test/badgeSyncCoordinator.test.ts && firebase emulators:exec --config ../../firebase.json --project demo-peapod --only firestore \"tsx --test test/badgeSyncLifecycle.integration.test.ts\"",
+    "test:pairing": "npm run build && firebase emulators:exec --config ../../firebase.json --project demo-peapod --only auth,functions,firestore,storage \"tsx --test test/pairingFunctions.integration.test.ts\"",
+    "test:rules": "firebase emulators:exec --config ../../firebase.json --project demo-peapod --only firestore,storage \"tsx test/firestore.rules.test.ts\" && npm run test:location-ownership",
+    "test:message-pins": "firebase emulators:exec --config ../../firebase.message-pins.json --project demo-peapod-message-pins --only firestore \"tsx --test test/messagePins.rules.test.ts\"",
+    "test:location-ownership": "firebase emulators:exec --config ../../firebase.location-ownership.json --project demo-peapod-location-ownership --only firestore \"tsx --test test/encryptedLocationOwnership.rules.test.ts\"",
+    "test:secure-pairing": "npm run build && firebase emulators:exec --config ../../firebase.json --project demo-peapod --only firestore \"tsx --test test/securePairing.integration.test.ts\""
+  },
+  "dependencies": {
+    "firebase-admin": "14.5.0",
+    "firebase-functions": "7.4.0"
+  },
+  "devDependencies": {
+    "@firebase/rules-unit-testing": "5.0.2",
+    "@types/node": "^22.15.30",
+    "firebase": "12.19.0",
+    "firebase-tools": "15.35.0",
+    "tsx": "^4.20.3",
+    "typescript": "^5.8.3"
+  },
+  "overrides": {
+    "@grpc/grpc-js": "1.14.7",
+    "@firebase/app": "0.16.2",
+    "@firebase/app-compat": "0.5.18",
+    "rimraf": "6.1.4"
+  }
+}

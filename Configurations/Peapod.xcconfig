@@ -1,0 +1,9 @@
+// Public defaults. Register your own identifiers and enable the matching capabilities.
+PEAPOD_BUNDLE_ID = org.example.peapod
+PEAPOD_APP_GROUP = group.$(PEAPOD_BUNDLE_ID)
+PEAPOD_AUTH_KEYCHAIN_SUFFIX = $(PEAPOD_BUNDLE_ID).shared-auth
+PEAPOD_E2EE_KEYCHAIN_SUFFIX = $(PEAPOD_BUNDLE_ID).e2ee
+DEVELOPMENT_TEAM =
+
+// Gitignored machine-specific signing and identifier overrides.
+#include? "Local.xcconfig"
